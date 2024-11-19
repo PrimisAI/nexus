@@ -7,7 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from nexus.ai import Agent, Orchestrator
 
-llm_config = {'model': 'gpt-4o', 'api_key': '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'}
+llm_config = {'model': 'gpt-4o', 'api_key': ''}
 
 planner = Agent(name="Planner",
                 system_message="You are professional verilog testplanner who write testplan when user ask for code",
