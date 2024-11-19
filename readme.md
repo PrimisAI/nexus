@@ -34,4 +34,4 @@ Note: The `.env` file contains sensitive information. Make sure to add it to you
 
 To run the Streamlit app, use the following command:
 
-         streamlit run examples/eda.py
+         python examples/eda.py
