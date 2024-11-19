@@ -1,4 +1,4 @@
-# Hardware Design Orchestrator
+#Orchestrator
 
 This project is a Streamlit-based chatbot interface for a Hardware Design Orchestrator. It uses AI agents to assist with planning, coding, and debugging Verilog designs.
 
