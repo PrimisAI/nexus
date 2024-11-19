@@ -161,7 +161,7 @@ class Orchestrator(AI):
         self.debugger.log(f"User: {user_query}")
         self.chat_history.append({'role': 'user', 'content': user_query})
         orchestrator_response = self.generate_response(self.chat_history, tools=self.available_tools, use_tools=True).choices[0]
-
+        print("orchestrator_response: ", orchestrator_response)
         while True:
             if orchestrator_response.finish_reason != "stop":
                 self.chat_history.append(orchestrator_response.message)
