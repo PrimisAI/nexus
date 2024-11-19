@@ -1,9 +1,8 @@
 import openai
-import streamlit as st
 import json
 from dotenv import load_dotenv
 from typing import List, Dict, Optional
-from debugger import Debugger
+from nexus.utils import Debugger
 
 load_dotenv()
 
