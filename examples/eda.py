@@ -36,60 +36,62 @@ orchestrator.register_agent(planner)
 orchestrator.register_agent(coder)
 orchestrator.register_agent(debugger)
 
-# Streamlit App
-st.set_page_config(page_title="Hardware Design Orchestrator", page_icon="🖥️", layout="wide")
+orchestrator.start_interactive_session()
 
-st.title("🖥️ Hardware Design Orchestrator")
+# # Streamlit App
+# st.set_page_config(page_title="Hardware Design Orchestrator", page_icon="🖥️", layout="wide")
 
-# Orchestrator System Message Editor
-st.subheader("Orchestrator System Message")
-if "orchestrator_system_message" not in st.session_state:
-    st.session_state.orchestrator_system_message = orchestrator.system_message
+# st.title("🖥️ Hardware Design Orchestrator")
 
-new_system_message = st.text_area("Edit the Orchestrator's system message:",
-                                  value=st.session_state.orchestrator_system_message,
-                                  height=100)
+# # Orchestrator System Message Editor
+# st.subheader("Orchestrator System Message")
+# if "orchestrator_system_message" not in st.session_state:
+#     st.session_state.orchestrator_system_message = orchestrator.system_message
 
-if st.button("Update System Message"):
-    orchestrator.system_message = new_system_message
-    st.session_state.orchestrator_system_message = new_system_message
-    st.success("System message updated successfully!")
+# new_system_message = st.text_area("Edit the Orchestrator's system message:",
+#                                   value=st.session_state.orchestrator_system_message,
+#                                   height=100)
 
-st.write("---")
+# if st.button("Update System Message"):
+#     orchestrator.system_message = new_system_message
+#     st.session_state.orchestrator_system_message = new_system_message
+#     st.success("System message updated successfully!")
 
-st.write("Interact with the hardware design orchestrator and its agents (Planner, Coder, Debugger).")
+# st.write("---")
 
-# Initialize chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# st.write("Interact with the hardware design orchestrator and its agents (Planner, Coder, Debugger).")
 
-# Display chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# # Initialize chat history
+# if "messages" not in st.session_state:
+#     st.session_state.messages = []
 
-# User input
-if prompt := st.chat_input("What can I help you with?"):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+# # Display chat messages
+# for message in st.session_state.messages:
+#     with st.chat_message(message["role"]):
+#         st.markdown(message["content"])
 
-    # Orchestrator response
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
-        for response in orchestrator.process_user_input(user_query=prompt):
-            full_response += response
-            message_placeholder.markdown(full_response + "▌")
-        message_placeholder.markdown(full_response)
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
+# # User input
+# if prompt := st.chat_input("What can I help you with?"):
+#     st.session_state.messages.append({"role": "user", "content": prompt})
+#     with st.chat_message("user"):
+#         st.markdown(prompt)
 
-# Sidebar with agent information
-st.sidebar.title("Agents")
-st.sidebar.write("**Planner:** Verilog test planner")
-st.sidebar.write("**Coder:** Verilog programmer")
-st.sidebar.write("**Debugger:** Professional debugger")
+#     # Orchestrator response
+#     with st.chat_message("assistant"):
+#         message_placeholder = st.empty()
+#         full_response = ""
+#         for response in orchestrator.process_user_input(user_query=prompt):
+#             full_response += response
+#             message_placeholder.markdown(full_response + "▌")
+#         message_placeholder.markdown(full_response)
+#     st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-# Clear chat button
-if st.sidebar.button("Clear Chat"):
-    st.session_state.messages = []
+# # Sidebar with agent information
+# st.sidebar.title("Agents")
+# st.sidebar.write("**Planner:** Verilog test planner")
+# st.sidebar.write("**Coder:** Verilog programmer")
+# st.sidebar.write("**Debugger:** Professional debugger")
+
+# # Clear chat button
+# if st.sidebar.button("Clear Chat"):
+#     st.session_state.messages = []
