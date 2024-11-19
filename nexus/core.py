@@ -106,7 +106,14 @@ class Orchestrator(AI):
         super().__init__(llm_config=llm_config)
 
         self.name = name
-        self.system_message = 'You are a helpful user assistant. You can call agents one by one in sequence. Your task is to manage the agents named as:\n'
+        self.system_message = """You are a highly capable user assistant and the Orchestrator of multiple specialized agents. Your primary responsibilities
+include:
+1. Understanding user queries and determining which agent(s) can best address them.
+2. Carefully planning the sequence of agent calls to ensure relevance.
+3. Passing outputs from one agent as inputs to another when necessary.
+4. Calling agents sequentially to execute complex tasks in a coordinated manner.
+
+Your task is to manage the following agents:"""
         self.registered_agents = []
         self.available_tools = []
         self.chat_history = []
@@ -128,11 +135,20 @@ class Orchestrator(AI):
                     "type": "object",
                     "properties": {
                         "agent_instruction": {
-                            "type": "string",
-                            "description": "Instruction to be sent to the selected agent by the Orchestrator"
+                            "type":
+                                "string",
+                            "description":
+                                f"""This argument serves as the set of instructions to be sent to the {agent.name} agent by the Orchestrator. These instructions must be clear, detailed,  
+and comprehensive, as the agent operates independently without direct communication with the user or other agents. When crafting instructions, consider the task step by step to ensure the agent can execute it effectively and without ambiguity."""
+                        },
+                        "history": {
+                            "type":
+                                "string",
+                            "description":
+                                f"""This argument will have all the information about other agents responces to the Orchestrator """
                         }
                     },
-                    "required": ["agent_instruction"]
+                    "required": ["agent_instruction", "history"]
                 }
             }
         })
@@ -146,12 +162,13 @@ class Orchestrator(AI):
         function_call = orchestrator_response.message.tool_calls[0]
         target_agent_name = function_call.function.name.replace("delegate_to_", "").lower()
         agent_instruction = json.loads(function_call.function.arguments)['agent_instruction']
+        agents_history = json.loads(function_call.function.arguments)['history']
 
-        self.debugger.log(f"Agent: {target_agent_name} | Instruction: {agent_instruction}")
+        self.debugger.log(f"Agent: {target_agent_name} | Instruction: {agent_instruction} | History: {agents_history}")
 
         for agent in self.registered_agents:
             if agent.name.lower() == target_agent_name:
-                agent_response = agent.chat(task=agent_instruction)
+                agent_response = agent.chat(task=agents_history + agent_instruction)
                 self.debugger.log(f"{target_agent_name}: {agent_response.choices[0].message.content}")
                 return agent_response.choices[0].message.content
 
@@ -161,7 +178,7 @@ class Orchestrator(AI):
         self.debugger.log(f"User: {user_query}")
         self.chat_history.append({'role': 'user', 'content': user_query})
         orchestrator_response = self.generate_response(self.chat_history, tools=self.available_tools, use_tools=True).choices[0]
-        print("orchestrator_response: ", orchestrator_response)
+
         while True:
             if orchestrator_response.finish_reason != "stop":
                 self.chat_history.append(orchestrator_response.message)
@@ -185,5 +202,7 @@ class Orchestrator(AI):
         self.chat_history = [{'role': 'system', 'content': self.system_message}]
         while True:
             user_input = input("User: ")
+            if "exit" in user_input:
+                break
             orchestrator_output = self.process_user_input(user_query=user_input)
             print(f"Orchestrator: {orchestrator_output}")

@@ -1,5 +1,6 @@
 import logging, os, json
 
+
 class Debugger:
     LOG_DIR = 'logs'
 
