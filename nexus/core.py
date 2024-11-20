@@ -108,6 +108,7 @@ Your task is to manage the following agents:"""
         self.chat_history = []
         self.debugger = Debugger(name="orchestrator")
         self.debugger.start_session()
+        self.chat_history = [{'role': 'system', 'content': self.system_message}]
 
     def configure_system_prompt(self, system_prompt: str):
         self.system_message = {"role": "system", "content": system_prompt}
@@ -152,6 +153,10 @@ and comprehensive, as the agent operates independently without direct communicat
         target_agent_name = function_call.function.name.replace("delegate_to_", "").lower()
         agent_instruction = json.loads(function_call.function.arguments)['agent_instruction']
         thinking_process = json.loads(function_call.function.arguments)['thinking_process']
+        with open("chat.jsonl", 'a') as file:
+            file.write(json.dumps({"role": "orchestrator", "action": "thinking", "content": thinking_process}) + '\n')
+        with open("chat.jsonl", 'a') as file:
+            file.write(json.dumps({"role": "orchestrator", "action": "input", "content": agent_instruction}) + '\n')
 
         self.debugger.log(f"Agent: {target_agent_name} | Instruction: {agent_instruction} | Thinking: {thinking_process}")
 
@@ -159,6 +164,8 @@ and comprehensive, as the agent operates independently without direct communicat
             if agent.name.lower() == target_agent_name:
                 agent_response = agent.chat(task=agent_instruction)
                 self.debugger.log(f"{target_agent_name}: {agent_response}")
+                with open("chat.jsonl", 'a') as file:
+                    file.write(json.dumps({"role": target_agent_name, "action": "output", "content": agent_response}) + '\n')
                 return agent_response
 
         return f"Error: No agent found with name '{target_agent_name}'"
@@ -185,6 +192,8 @@ and comprehensive, as the agent operates independently without direct communicat
                 user_query_answer = orchestrator_response.message.content
                 self.debugger.log(f"Orchestrator: {user_query_answer}")
                 self.chat_history.append({"role": "assistant", "content": user_query_answer})
+                with open("chat.jsonl", 'a') as file:
+                    file.write(json.dumps({"role": "orchestrator", "action": "output", "content": user_query_answer}) + '\n')
                 return user_query_answer
 
     def start_interactive_session(self):
@@ -195,3 +204,8 @@ and comprehensive, as the agent operates independently without direct communicat
                 break
             orchestrator_output = self.process_user_input(user_query=user_input)
             print(f"Orchestrator: {orchestrator_output}")
+
+    def talk(self, message):
+
+        orchestrator_output = self.process_user_input(user_query=message)
+        return orchestrator_output
