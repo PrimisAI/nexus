@@ -2,3 +2,4 @@ logs
 __pycache__
 .env
 chat.rapidgpt
+.vscode
