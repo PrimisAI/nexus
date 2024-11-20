@@ -1,22 +1,16 @@
-import streamlit as st
-import sys
-import os
+import sys, os, subprocess
 from dotenv import load_dotenv
-import time
-import subprocess
-import json
+import streamlit as st
 
 load_dotenv()
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from nexus.core import Agent, Orchestrator
+from nexus.core import Agent, Supervisor
 
 llm_config = {'model': os.getenv('LLM_MODEL'), 'api_key': os.getenv('LLM_API_KEY'), 'base_url': os.getenv('LLM_BASE_URL')}
 
-
 def execute_command(argument: str):
     try:
-
         result = subprocess.run(argument, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         output = result.stdout + result.stderr
         if result.returncode == 0:
@@ -25,7 +19,6 @@ def execute_command(argument: str):
             return {"status": "error", "output": output.strip()}
     except Exception as e:
         return {"status": "error", "output": str(e)}
-
 
 function_metadata = {
     "type": "function",
@@ -68,13 +61,13 @@ debugger = Agent(
     llm_config=llm_config,
     tools=tools)
 
-# Initialize orchestrator
-orchestrator = Orchestrator(name="Orchestrator", llm_config=llm_config)
-orchestrator.system_message = ("Think you are a hardware design center manager who controls other agents. " +
-                               orchestrator.system_message)
+# Initialize supervisor
+supervisor = Supervisor(name="Supervisor", llm_config=llm_config)
+supervisor.system_message = ("Think you are a hardware design center manager who controls other agents. " +
+                               supervisor.system_message)
 
-orchestrator.register_agent(planner)
-orchestrator.register_agent(coder)
-orchestrator.register_agent(debugger)
+supervisor.register_agent(planner)
+supervisor.register_agent(coder)
+supervisor.register_agent(debugger)
 
-orchestrator.start_interactive_session()
+supervisor.start_interactive_session()

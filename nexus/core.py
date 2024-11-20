@@ -65,7 +65,7 @@ class Agent(AI):
         self.chat_history.append({"role": "system", "content": message})
 
     def chat(self, task: str) -> Dict:
-        self.debugger.log(f"Orchestrator: {task}")
+        self.debugger.log(f"Supervisor: {task}")
         self.chat_history.append({'role': 'user', 'content': task})
 
         while True:
@@ -89,13 +89,13 @@ class Agent(AI):
                 self.chat_history.append({"role": "tool", "content": str(tool_feedback), "tool_call_id": function_call.id})
 
 
-class Orchestrator(AI):
+class Supervisor(AI):
 
     def __init__(self, name: str, llm_config: Dict[str, str]):
         super().__init__(llm_config=llm_config)
 
         self.name = name
-        self.system_message = """You are a highly capable user assistant and the Orchestrator of multiple specialized agents. Your primary responsibilities
+        self.system_message = """You are a highly capable user assistant and the Supervisor of multiple specialized agents. Your primary responsibilities
 include:
 1. Understanding user queries and determining which agent(s) can best address them.
 2. Carefully planning the sequence of agent calls to ensure relevance.
@@ -106,7 +106,7 @@ Your task is to manage the following agents:"""
         self.registered_agents = []
         self.available_tools = []
         self.chat_history = []
-        self.debugger = Debugger(name="orchestrator")
+        self.debugger = Debugger(name="Supervisor")
         self.debugger.start_session()
 
     def configure_system_prompt(self, system_prompt: str):
@@ -127,7 +127,7 @@ Your task is to manage the following agents:"""
                             "type":
                                 "string",
                             "description":
-                                f"""This argument serves as the set of instructions to be sent to the {agent.name} agent by the Orchestrator. These instructions must be clear, detailed,  
+                                f"""This argument serves as the set of instructions to be sent to the {agent.name} agent by the Supervisor. These instructions must be clear, detailed,  
 and comprehensive, as the agent operates independently without direct communication with the user or other agents. When crafting instructions, consider the task step by step to ensure the agent can execute it effectively and without ambiguity."""
                         },
                         "thinking_process": {
@@ -147,8 +147,8 @@ and comprehensive, as the agent operates independently without direct communicat
     def get_registered_agents(self) -> List[str]:
         return [agent.name for agent in self.registered_agents]
 
-    def delegate_to_agent(self, orchestrator_response):
-        function_call = orchestrator_response.message.tool_calls[0]
+    def delegate_to_agent(self, supervisor_response):
+        function_call = supervisor_response.message.tool_calls[0]
         target_agent_name = function_call.function.name.replace("delegate_to_", "").lower()
         agent_instruction = json.loads(function_call.function.arguments)['agent_instruction']
         thinking_process = json.loads(function_call.function.arguments)['thinking_process']
@@ -166,24 +166,24 @@ and comprehensive, as the agent operates independently without direct communicat
     def process_user_input(self, user_query: str):
         self.debugger.log(f"User: {user_query}")
         self.chat_history.append({'role': 'user', 'content': user_query})
-        orchestrator_response = self.generate_response(self.chat_history, tools=self.available_tools, use_tools=True).choices[0]
+        supervisor_response = self.generate_response(self.chat_history, tools=self.available_tools, use_tools=True).choices[0]
 
         while True:
-            if orchestrator_response.finish_reason != "stop":
-                self.chat_history.append(orchestrator_response.message)
-                agent_feedback = self.delegate_to_agent(orchestrator_response)
+            if supervisor_response.finish_reason != "stop":
+                self.chat_history.append(supervisor_response.message)
+                agent_feedback = self.delegate_to_agent(supervisor_response)
                 self.chat_history.append({
                     "role": "tool",
                     "content": agent_feedback,
-                    "tool_call_id": orchestrator_response.message.tool_calls[0].id
+                    "tool_call_id": supervisor_response.message.tool_calls[0].id
                 })
 
-                orchestrator_response = self.generate_response(self.chat_history, tools=self.available_tools,
+                supervisor_response = self.generate_response(self.chat_history, tools=self.available_tools,
                                                                use_tools=True).choices[0]
 
             else:
-                user_query_answer = orchestrator_response.message.content
-                self.debugger.log(f"Orchestrator: {user_query_answer}")
+                user_query_answer = supervisor_response.message.content
+                self.debugger.log(f"Supervisor: {user_query_answer}")
                 self.chat_history.append({"role": "assistant", "content": user_query_answer})
                 return user_query_answer
 
@@ -193,5 +193,5 @@ and comprehensive, as the agent operates independently without direct communicat
             user_input = input("User: ")
             if "exit" in user_input:
                 break
-            orchestrator_output = self.process_user_input(user_query=user_input)
-            print(f"Orchestrator: {orchestrator_output}")
+            supervisor_output = self.process_user_input(user_query=user_input)
+            print(f"Supervisor: {supervisor_output}")
