@@ -43,20 +43,15 @@ class AI:
             return {"error": f"Chat failed: {str(e)}"}
 
 
-class Agent:
+class Agent(AI):
 
     def __init__(self, name: str, llm_config: Dict[str, str], tools: Optional[List[Dict]] = None, system_message=None):
-        """
-        Initialize an AI agent.
-
-        Args:
-            name (str): Name of the agent.
-            llm_config (Dict[str, str]): Configuration for the language model.
-            tools (Optional[List[Dict]]): List of tools for function calling.
-        """
+        super().__init__(llm_config=llm_config)
         self.name = name
         self.llm_config = llm_config
         self.tools = tools or []
+        self.tools_metadata = []
+        self.tools_metadata.extend([tool['metadata'] for tool in self.tools])
         self.system_message = system_message
         self.debugger = Debugger(name=name)
         self.debugger.start_session()
@@ -69,35 +64,29 @@ class Agent:
         """Set the system message for the agent."""
         self.chat_history.append({"role": "system", "content": message})
 
-    def chat(self, task: str, use_tools: bool = False) -> Dict:
-        """
-        Execute a chat completion.
-
-        Args:
-            messages (List[Dict[str, str]]): List of conversation messages.
-            use_tools (bool): Whether to use function calling with tools.
-
-        Returns:
-            Dict: The response from the OpenAI API.
-        """
-        self.chat_history.append({"role": "user", "content": task})
+    def chat(self, task: str) -> Dict:
         self.debugger.log(f"Orchestrator: {task}")
-        try:
-            params = {
-                "model": self.llm_config['model'],
-                "messages": self.chat_history,
-                "temperature": float(self.llm_config.get('temperature', 0.7))
-            }
+        self.chat_history.append({'role': 'user', 'content': task})
 
-            if use_tools and self.tools:
-                params["tools"] = self.tools
-                params["tool_choice"] = "auto"
+        while True:
+            response = self.generate_response(self.chat_history, tools=self.tools_metadata, use_tools=True).choices[0]
 
-            response = self.client.chat.completions.create(**params)
-            self.debugger.log(f"{self.name}: {response.choices[0].message.content}")
-            return response
-        except Exception as e:
-            return {"error": f"Chat failed: {str(e)}"}
+            if response.finish_reason == "stop":
+                user_query_answer = response.message.content
+                self.debugger.log(f"Coder: {user_query_answer}")
+                self.chat_history.append({"role": "assistant", "content": user_query_answer})
+                return user_query_answer
+
+            self.chat_history.append(response.message)
+            function_call = response.message.tool_calls[0]
+            target_tool_name = function_call.function.name
+            tool_instruction = json.loads(function_call.function.arguments)['argument']
+
+            target_tool = next((tool for tool in self.tools if tool['metadata']['function']['name'] == target_tool_name), None)
+
+            if target_tool:
+                tool_feedback = target_tool['tool'](tool_instruction)
+                self.chat_history.append({"role": "tool", "content": str(tool_feedback), "tool_call_id": function_call.id})
 
 
 class Orchestrator(AI):
@@ -141,14 +130,14 @@ Your task is to manage the following agents:"""
                                 f"""This argument serves as the set of instructions to be sent to the {agent.name} agent by the Orchestrator. These instructions must be clear, detailed,  
 and comprehensive, as the agent operates independently without direct communication with the user or other agents. When crafting instructions, consider the task step by step to ensure the agent can execute it effectively and without ambiguity."""
                         },
-                        "history": {
+                        "thinking_process": {
                             "type":
                                 "string",
                             "description":
-                                f"""This argument will have all the information about other agents responces to the Orchestrator """
+                                f"""The thinking_process parameter provides insight into why the execute_command function and its arguments were selected. This transparency allows the user to better understand the assistant's decision-making and the reasoning behind the chosen approach.Your answer will contain thinking process step by step.First, consider all possible commands that might work for the task. Then, identify any potential issues that could arise, such as dependencies or other requirements. If there are possible errors the user could encounter, think about how they might be resolved. Use 'I think' when you describe"""
                         }
                     },
-                    "required": ["agent_instruction", "history"]
+                    "required": ["agent_instruction", "thinking_process"]
                 }
             }
         })
@@ -162,15 +151,15 @@ and comprehensive, as the agent operates independently without direct communicat
         function_call = orchestrator_response.message.tool_calls[0]
         target_agent_name = function_call.function.name.replace("delegate_to_", "").lower()
         agent_instruction = json.loads(function_call.function.arguments)['agent_instruction']
-        agents_history = json.loads(function_call.function.arguments)['history']
+        thinking_process = json.loads(function_call.function.arguments)['thinking_process']
 
-        self.debugger.log(f"Agent: {target_agent_name} | Instruction: {agent_instruction} | History: {agents_history}")
+        self.debugger.log(f"Agent: {target_agent_name} | Instruction: {agent_instruction} | Thinking: {thinking_process}")
 
         for agent in self.registered_agents:
             if agent.name.lower() == target_agent_name:
-                agent_response = agent.chat(task=agents_history + agent_instruction)
-                self.debugger.log(f"{target_agent_name}: {agent_response.choices[0].message.content}")
-                return agent_response.choices[0].message.content
+                agent_response = agent.chat(task=agent_instruction)
+                self.debugger.log(f"{target_agent_name}: {agent_response}")
+                return agent_response
 
         return f"Error: No agent found with name '{target_agent_name}'"
 
