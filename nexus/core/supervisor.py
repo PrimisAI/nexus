@@ -288,3 +288,32 @@ Your task is to manage the following agents:"""
         agent_descriptions = "\n".join(f"{agent.name}: {agent.system_message}" for agent in self.registered_agents)
         self.system_message = f"{self._get_default_system_message()}\n\n{agent_descriptions}"
         self.reset_chat_history()
+
+    def display_agent_graph(self):
+        """
+        Display a simple ASCII graph in the terminal showing the Supervisor,
+        connected agents, and their available tools.
+        """
+        def _create_branch(length):
+            return "│   " * (length - 1) + "├── "
+
+        print(f"Supervisor: {self.name}")
+        print("│")
+
+        for i, agent in enumerate(self.registered_agents):
+            is_last_agent = i == len(self.registered_agents) - 1
+            agent_prefix = "└── " if is_last_agent else "├── "
+            print(f"{agent_prefix}Agent: {agent.name}")
+
+            if hasattr(agent, 'tools') and agent.tools:
+                tool_depth = 2 if is_last_agent else 1
+                for j, tool in enumerate(agent.tools):
+                    is_last_tool = j == len(agent.tools) - 1
+                    tool_prefix = "└── " if is_last_tool else "├── "
+                    tool_name = tool['metadata']['function']['name'] if 'metadata' in tool else "Unnamed Tool"
+                    print(f"{_create_branch(tool_depth)}{tool_prefix}Tool: {tool_name}")
+            else:
+                print(f"{_create_branch(1)}└── No tools available")
+
+            if not is_last_agent:
+                print("│")

@@ -71,4 +71,5 @@ supervisor.register_agent(planner)
 supervisor.register_agent(coder)
 supervisor.register_agent(debugger)
 
+supervisor.display_agent_graph()
 supervisor.start_interactive_session()
