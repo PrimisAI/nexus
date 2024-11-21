@@ -1,14 +1,46 @@
-import streamlit as st
-import sys
-import os
+import sys, os, subprocess
 from dotenv import load_dotenv
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from nexus.core import Agent, Supervisor
+
 
 load_dotenv()
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from nexus.core import Agent, Orchestrator
-
 llm_config = {'model': os.getenv('LLM_MODEL'), 'api_key': os.getenv('LLM_API_KEY'), 'base_url': os.getenv('LLM_BASE_URL')}
+
+def execute_command(argument: str):
+    try:
+        result = subprocess.run(argument, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        output = result.stdout + result.stderr
+        if result.returncode == 0:
+            return {"status": "success", "output": output.strip()}
+        else:
+            return {"status": "error", "output": output.strip()}
+    except Exception as e:
+        return {"status": "error", "output": str(e)}
+
+function_metadata = {
+    "type": "function",
+    "function": {
+        "name":
+            "execute_command",
+        "description":
+            "Execute a command on the Ubuntu terminal and capture the output or error. This function is called when user wants to execute any command on terminal",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "argument": {
+                    "type": "string",
+                    "description": "Command to execute on the Ubuntu terminal."
+                }
+            },
+            "required": ["argument"]
+        }
+    }
+}
+
+tools = [{"tool": execute_command, "metadata": function_metadata}]
 
 # Initialize agents
 planner = Agent(
@@ -24,74 +56,20 @@ coder = Agent(
 
 debugger = Agent(
     name="Debugger",
-    system_message="You are a professional debugger programmer. Don't assume; ask for complete information if it's missing.",
-    llm_config=llm_config)
+    system_message=
+    "You are a professional debugger programmer. Don't assume; ask for complete information if it's missing. You can access terminal to run iverilog to test code syntax and functionality",
+    llm_config=llm_config,
+    tools=tools,
+    use_tools=True)
 
-# Initialize orchestrator
-orchestrator = Orchestrator(name="Orchestrator", llm_config=llm_config)
-orchestrator.system_message = ("Think you are a hardware design center manager who controls other agents. " +
-                               orchestrator.system_message)
+# Initialize supervisor
+supervisor = Supervisor(name="Supervisor", llm_config=llm_config)
+supervisor.system_message = ("Think you are a hardware design center manager who controls other agents. " +
+                               supervisor.system_message)
 
-orchestrator.register_agent(planner)
-orchestrator.register_agent(coder)
-orchestrator.register_agent(debugger)
+supervisor.register_agent(planner)
+supervisor.register_agent(coder)
+supervisor.register_agent(debugger)
 
-orchestrator.start_interactive_session()
-
-# # Streamlit App
-# st.set_page_config(page_title="Hardware Design Orchestrator", page_icon="🖥️", layout="wide")
-
-# st.title("🖥️ Hardware Design Orchestrator")
-
-# # Orchestrator System Message Editor
-# st.subheader("Orchestrator System Message")
-# if "orchestrator_system_message" not in st.session_state:
-#     st.session_state.orchestrator_system_message = orchestrator.system_message
-
-# new_system_message = st.text_area("Edit the Orchestrator's system message:",
-#                                   value=st.session_state.orchestrator_system_message,
-#                                   height=100)
-
-# if st.button("Update System Message"):
-#     orchestrator.system_message = new_system_message
-#     st.session_state.orchestrator_system_message = new_system_message
-#     st.success("System message updated successfully!")
-
-# st.write("---")
-
-# st.write("Interact with the hardware design orchestrator and its agents (Planner, Coder, Debugger).")
-
-# # Initialize chat history
-# if "messages" not in st.session_state:
-#     st.session_state.messages = []
-
-# # Display chat messages
-# for message in st.session_state.messages:
-#     with st.chat_message(message["role"]):
-#         st.markdown(message["content"])
-
-# # User input
-# if prompt := st.chat_input("What can I help you with?"):
-#     st.session_state.messages.append({"role": "user", "content": prompt})
-#     with st.chat_message("user"):
-#         st.markdown(prompt)
-
-#     # Orchestrator response
-#     with st.chat_message("assistant"):
-#         message_placeholder = st.empty()
-#         full_response = ""
-#         for response in orchestrator.process_user_input(user_query=prompt):
-#             full_response += response
-#             message_placeholder.markdown(full_response + "▌")
-#         message_placeholder.markdown(full_response)
-#     st.session_state.messages.append({"role": "assistant", "content": full_response})
-
-# # Sidebar with agent information
-# st.sidebar.title("Agents")
-# st.sidebar.write("**Planner:** Verilog test planner")
-# st.sidebar.write("**Coder:** Verilog programmer")
-# st.sidebar.write("**Debugger:** Professional debugger")
-
-# # Clear chat button
-# if st.sidebar.button("Clear Chat"):
-#     st.session_state.messages = []
+supervisor.display_agent_graph()
+supervisor.start_interactive_session()
