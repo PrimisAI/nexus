@@ -1,35 +1,88 @@
+"""
+Supervisor module for managing multiple specialized AI agents.
+
+This module provides a Supervisor class that coordinates interactions between
+users and multiple specialized AI agents.
+"""
+
 import json
-from typing import List, Dict
-from nexus.core.ai import AI
-from nexus.core.agents import Agent
+from typing import List, Dict, Any, Optional
+from openai.types.chat import ChatCompletionMessage
+from nexus.core import AI
+from nexus.core import Agent
 from nexus.utils.debugger import Debugger
 
 
 class Supervisor(AI):
+    """
+    A Supervisor class that manages multiple specialized AI agents.
+
+    This class handles user queries, delegates tasks to appropriate agents,
+    and coordinates complex multi-step processes.
+    """
+
     def __init__(self, name: str, llm_config: Dict[str, str]):
+        """
+        Initialize the Supervisor instance.
+
+        Args:
+            name (str): The name of the supervisor.
+            llm_config (Dict[str, str]): Configuration for the language model.
+
+        Raises:
+            ValueError: If the name is empty.
+        """
         super().__init__(llm_config=llm_config)
 
+        if not name:
+            raise ValueError("Supervisor name cannot be empty")
+
         self.name = name
-        self.system_message = """You are a highly capable user assistant and the Supervisor of multiple specialized agents. Your primary responsibilities
-include:
+        self.system_message = self._get_default_system_message()
+        self.registered_agents: List[Agent] = []
+        self.available_tools: List[Dict[str, Any]] = []
+        self.chat_history: List[Dict[str, str]] = []
+        self.debugger = Debugger(name="Supervisor")
+        self.debugger.start_session()
+
+    @staticmethod
+    def _get_default_system_message() -> str:
+        """Return the default system message for the Supervisor."""
+        return """You are a highly capable user assistant and the Supervisor of multiple specialized agents. Your primary responsibilities include:
 1. Understanding user queries and determining which agent(s) can best address them.
 2. Carefully planning the sequence of agent calls to ensure relevance.
 3. Passing outputs from one agent as inputs to another when necessary.
 4. Calling agents sequentially to execute complex tasks in a coordinated manner.
 
 Your task is to manage the following agents:"""
-        self.registered_agents = []
-        self.available_tools = []
-        self.chat_history = []
-        self.debugger = Debugger(name="Supervisor")
-        self.debugger.start_session()
 
-    def configure_system_prompt(self, system_prompt: str):
+    def configure_system_prompt(self, system_prompt: str) -> None:
+        """
+        Configure the system prompt for the Supervisor.
+
+        Args:
+            system_prompt (str): The new system prompt to set.
+        """
         self.system_message = {"role": "system", "content": system_prompt}
 
-    def register_agent(self, agent: Agent):
-        self.registered_agents.append(agent)
+    def register_agent(self, agent: Agent) -> None:
+        """
+        Register a new agent with the Supervisor.
 
+        Args:
+            agent (Agent): The agent to register.
+        """
+        self.registered_agents.append(agent)
+        self._add_agent_tool(agent)
+        self.system_message += f"{agent.name}: {agent.system_message}\n"
+
+    def _add_agent_tool(self, agent: Agent) -> None:
+        """
+        Add a tool for the registered agent to the available tools.
+
+        Args:
+            agent (Agent): The agent for which to add a tool.
+        """
         self.available_tools.append({
             "type": "function",
             "function": {
@@ -39,17 +92,12 @@ Your task is to manage the following agents:"""
                     "type": "object",
                     "properties": {
                         "agent_instruction": {
-                            "type":
-                                "string",
-                            "description":
-                                f"""This argument serves as the set of instructions to be sent to the {agent.name} agent by the Supervisor. These instructions must be clear, detailed,  
-and comprehensive, as the agent operates independently without direct communication with the user or other agents. When crafting instructions, consider the task step by step to ensure the agent can execute it effectively and without ambiguity."""
+                            "type": "string",
+                            "description": f"Instructions for the {agent.name} agent."
                         },
                         "thinking_process": {
-                            "type":
-                                "string",
-                            "description":
-                                f"""The thinking_process parameter provides insight into why the execute_command function and its arguments were selected. This transparency allows the user to better understand the assistant's decision-making and the reasoning behind the chosen approach.Your answer will contain thinking process step by step.First, consider all possible commands that might work for the task. Then, identify any potential issues that could arise, such as dependencies or other requirements. If there are possible errors the user could encounter, think about how they might be resolved. Use 'I think' when you describe"""
+                            "type": "string",
+                            "description": "Explanation of the decision-making process."
                         }
                     },
                     "required": ["agent_instruction", "thinking_process"]
@@ -57,16 +105,39 @@ and comprehensive, as the agent operates independently without direct communicat
             }
         })
 
-        self.system_message += f"{agent.name}: {agent.system_message}\n"
-
     def get_registered_agents(self) -> List[str]:
+        """
+        Get the names of all registered agents.
+
+        Returns:
+            List[str]: A list of registered agent names.
+        """
         return [agent.name for agent in self.registered_agents]
 
-    def delegate_to_agent(self, supervisor_response):
-        function_call = supervisor_response.message.tool_calls[0]
+    def delegate_to_agent(self, message: ChatCompletionMessage) -> str:
+        """
+        Delegate a task to the appropriate agent based on the supervisor's response.
+
+        Args:
+            message (ChatCompletionMessage): The message containing the delegation information.
+
+        Returns:
+            str: The response from the delegated agent.
+
+        Raises:
+            ValueError: If no matching agent is found for delegation or if the message structure is unexpected.
+        """
+        if not hasattr(message, 'tool_calls') or not message.tool_calls:
+            raise ValueError("Message does not contain tool calls")
+
+        function_call = message.tool_calls[0]
         target_agent_name = function_call.function.name.replace("delegate_to_", "").lower()
-        agent_instruction = json.loads(function_call.function.arguments)['agent_instruction']
-        thinking_process = json.loads(function_call.function.arguments)['thinking_process']
+        args = json.loads(function_call.function.arguments)
+        agent_instruction = args.get('agent_instruction')
+        thinking_process = args.get('thinking_process')
+
+        if not agent_instruction:
+            raise ValueError("Agent instruction is missing from the function call")
 
         self.debugger.log(f"Agent: {target_agent_name} | Instruction: {agent_instruction} | Thinking: {thinking_process}")
 
@@ -76,37 +147,144 @@ and comprehensive, as the agent operates independently without direct communicat
                 self.debugger.log(f"{target_agent_name}: {agent_response}")
                 return agent_response
 
-        return f"Error: No agent found with name '{target_agent_name}'"
+        raise ValueError(f"No agent found with name '{target_agent_name}'")
 
-    def process_user_input(self, user_query: str):
+    def process_user_input(self, user_query: str) -> str:
+        """
+        Process user input and generate a response using the appropriate agents.
+
+        Args:
+            user_query (str): The user's input query.
+
+        Returns:
+            str: The final response to the user's query.
+
+        Raises:
+            RuntimeError: If there's an error in processing the user input.
+        """
         self.debugger.log(f"User: {user_query}")
         self.chat_history.append({'role': 'user', 'content': user_query})
-        supervisor_response = self.generate_response(self.chat_history, tools=self.available_tools, use_tools=True).choices[0]
 
-        while True:
-            if supervisor_response.finish_reason != "stop":
+        try:
+            while True:
+                supervisor_response = self.generate_response(self.chat_history, tools=self.available_tools, use_tools=True).choices[0]
+
+                if supervisor_response.finish_reason == "stop":
+                    user_query_answer = supervisor_response.message.content
+                    self.debugger.log(f"Supervisor: {user_query_answer}")
+                    self.chat_history.append({"role": "assistant", "content": user_query_answer})
+                    return user_query_answer
+
                 self.chat_history.append(supervisor_response.message)
-                agent_feedback = self.delegate_to_agent(supervisor_response)
-                self.chat_history.append({
-                    "role": "tool",
-                    "content": agent_feedback,
-                    "tool_call_id": supervisor_response.message.tool_calls[0].id
-                })
 
-                supervisor_response = self.generate_response(self.chat_history, tools=self.available_tools,
-                                                               use_tools=True).choices[0]
+                # Check if tool_calls attribute exists
+                if hasattr(supervisor_response.message, 'tool_calls') and supervisor_response.message.tool_calls:
+                    agent_feedback = self.delegate_to_agent(supervisor_response.message)
+                    self.chat_history.append({
+                        "role": "tool",
+                        "content": agent_feedback,
+                        "tool_call_id": supervisor_response.message.tool_calls[0].id
+                    })
+                else:
+                    # If no tool_calls, treat it as a direct response
+                    return supervisor_response.message.content
 
-            else:
-                user_query_answer = supervisor_response.message.content
-                self.debugger.log(f"Supervisor: {user_query_answer}")
-                self.chat_history.append({"role": "assistant", "content": user_query_answer})
-                return user_query_answer
+        except Exception as e:
+            error_msg = f"Error in processing user input: {str(e)}"
+            self.debugger.log(error_msg)
+            raise RuntimeError(error_msg)
 
-    def start_interactive_session(self):
+    def start_interactive_session(self) -> None:
+        """
+        Start an interactive session with the user.
+
+        This method initiates a loop that continuously processes user input
+        until the user decides to exit.
+        """
         self.chat_history = [{'role': 'system', 'content': self.system_message}]
+        print("Starting interactive session. Type 'exit' to end the session.")
         while True:
-            user_input = input("User: ")
-            if "exit" in user_input:
+            user_input = input("User: ").strip()
+            if user_input.lower() == "exit":
+                print("Ending session. Goodbye!")
                 break
-            supervisor_output = self.process_user_input(user_query=user_input)
-            print(f"Supervisor: {supervisor_output}")
+            try:
+                supervisor_output = self.process_user_input(user_query=user_input)
+                print(f"Supervisor: {supervisor_output}")
+            except Exception as e:
+                print(f"An error occurred: {str(e)}")
+
+    def __str__(self) -> str:
+        """Return a string representation of the Supervisor instance."""
+        return f"Supervisor(name={self.name}, agents={len(self.registered_agents)})"
+
+    def __repr__(self) -> str:
+        """Return a detailed string representation of the Supervisor instance."""
+        return (f"Supervisor(name={self.name}, llm_config={self.llm_config}, "
+                f"registered_agents={[agent.name for agent in self.registered_agents]})")
+
+    def reset_chat_history(self) -> None:
+        """Reset the chat history to its initial state with only the system message."""
+        self.chat_history = [{'role': 'system', 'content': self.system_message}]
+
+    def get_chat_history(self) -> List[Dict[str, str]]:
+        """
+        Get the current chat history.
+
+        Returns:
+            List[Dict[str, str]]: The current chat history.
+        """
+        return self.chat_history
+
+    def add_to_chat_history(self, role: str, content: str) -> None:
+        """
+        Add a new message to the chat history.
+
+        Args:
+            role (str): The role of the message sender (e.g., 'user', 'assistant', 'system').
+            content (str): The content of the message.
+
+        Raises:
+            ValueError: If an invalid role is provided.
+        """
+        if role not in ['user', 'assistant', 'system', 'tool']:
+            raise ValueError(f"Invalid role: {role}")
+        self.chat_history.append({"role": role, "content": content})
+
+    def get_agent_by_name(self, agent_name: str) -> Optional[Agent]:
+        """
+        Get a registered agent by its name.
+
+        Args:
+            agent_name (str): The name of the agent to retrieve.
+
+        Returns:
+            Optional[Agent]: The agent with the specified name, or None if not found.
+        """
+        return next((agent for agent in self.registered_agents if agent.name.lower() == agent_name.lower()), None)
+
+    def remove_agent(self, agent_name: str) -> bool:
+        """
+        Remove a registered agent by its name.
+
+        Args:
+            agent_name (str): The name of the agent to remove.
+
+        Returns:
+            bool: True if the agent was successfully removed, False otherwise.
+        """
+        agent = self.get_agent_by_name(agent_name)
+        if agent:
+            self.registered_agents.remove(agent)
+            self.available_tools = [tool for tool in self.available_tools 
+                                    if tool['function']['name'] != f"delegate_to_{agent_name}"]
+            return True
+        return False
+
+    def update_system_message(self) -> None:
+        """
+        Update the system message to reflect the current set of registered agents.
+        """
+        agent_descriptions = "\n".join(f"{agent.name}: {agent.system_message}" for agent in self.registered_agents)
+        self.system_message = f"{self._get_default_system_message()}\n\n{agent_descriptions}"
+        self.reset_chat_history()

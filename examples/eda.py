@@ -59,7 +59,8 @@ debugger = Agent(
     system_message=
     "You are a professional debugger programmer. Don't assume; ask for complete information if it's missing. You can access terminal to run iverilog to test code syntax and functionality",
     llm_config=llm_config,
-    tools=tools)
+    tools=tools,
+    use_tools=True)
 
 # Initialize supervisor
 supervisor = Supervisor(name="Supervisor", llm_config=llm_config)
