@@ -25,7 +25,7 @@ Here's a simple example to get you started with Nexus:
 
 ```python
 from nexus.core import AI, Agent, Supervisor
-from nexus.utils import Debugger
+from nexus.utils.debugger import Debugger
 
 # Configure your OpenAI API key
 llm_config = {
@@ -45,6 +45,7 @@ supervisor.register_agent(agent1)
 supervisor.register_agent(agent2)
 
 # Start an interactive session
+supervisor.display_agent_graph()
 supervisor.start_interactive_session()
 ```
 
