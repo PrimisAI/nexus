@@ -1,12 +1,8 @@
-import json
+import json, subprocess, time
 from typing import Dict, Any
-import subprocess
-import time
-
 
 class ToolsBucket:
-
-    def humza(self, argument: str) -> Dict[str, Any]:
+    def execute_command(self, argument: str) -> Dict[str, Any]:
         """
                 Execute a command in the persistent terminal session.
 
