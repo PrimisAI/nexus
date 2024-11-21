@@ -12,7 +12,7 @@ setup(
     name='nexus',
     version='0.1.0',
     author='PrimisAI',
-    author_email='',
+    author_email='info@primis.ai',
     description='Nexus AI is a powerful and flexible Python package for managing AI agents and coordinating complex tasks using LLMs. It provides a robust framework for creating, managing, and interacting with multiple specialized AI agents under the supervision of a central coordinator.',
     long_description=long_description,
     long_description_content_type='text/markdown',
