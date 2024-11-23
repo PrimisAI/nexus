@@ -2,7 +2,7 @@ import sys, os, subprocess
 from dotenv import load_dotenv
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from nexus.core import Agent, Supervisor
+from primisai.nexus.core import Agent, Supervisor
 
 
 load_dotenv()
