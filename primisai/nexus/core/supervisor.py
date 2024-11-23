@@ -8,9 +8,9 @@ users and multiple specialized AI agents.
 import json
 from typing import List, Dict, Any, Optional
 from openai.types.chat import ChatCompletionMessage
-from nexus.core import AI
-from nexus.core import Agent
-from nexus.utils.debugger import Debugger
+from primisai.nexus.core import AI
+from primisai.nexus.core import Agent
+from primisai.nexus.utils.debugger import Debugger
 
 
 class Supervisor(AI):
@@ -276,7 +276,7 @@ Your task is to manage the following agents:"""
         agent = self.get_agent_by_name(agent_name)
         if agent:
             self.registered_agents.remove(agent)
-            self.available_tools = [tool for tool in self.available_tools 
+            self.available_tools = [tool for tool in self.available_tools
                                     if tool['function']['name'] != f"delegate_to_{agent_name}"]
             return True
         return False

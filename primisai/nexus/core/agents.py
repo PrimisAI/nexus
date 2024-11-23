@@ -8,8 +8,8 @@ with additional features like tool usage and chat history management.
 import json
 from typing import List, Dict, Optional, Any
 from openai.types.chat import ChatCompletionMessage
-from nexus.core.ai import AI
-from nexus.utils.debugger import Debugger
+from primisai.nexus.core.ai import AI
+from primisai.nexus.utils.debugger import Debugger
 
 
 class Agent(AI):
@@ -20,9 +20,9 @@ class Agent(AI):
     and management of chat history.
     """
 
-    def __init__(self, name: str, llm_config: Dict[str, str], 
-                 tools: Optional[List[Dict[str, Any]]] = None, 
-                 system_message: Optional[str] = None, 
+    def __init__(self, name: str, llm_config: Dict[str, str],
+                 tools: Optional[List[Dict[str, Any]]] = None,
+                 system_message: Optional[str] = None,
                  use_tools: bool = False):
         """
         Initialize the Agent instance.
@@ -84,8 +84,8 @@ class Agent(AI):
         while True:
             try:
                 response = self.generate_response(
-                    self.chat_history, 
-                    tools=self.tools_metadata, 
+                    self.chat_history,
+                    tools=self.tools_metadata,
                     use_tools=self.use_tools
                 ).choices[0]
 
@@ -124,8 +124,8 @@ class Agent(AI):
 
         tool_feedback = target_tool['tool'](tool_instruction)
         self.chat_history.append({
-            "role": "tool", 
-            "content": str(tool_feedback), 
+            "role": "tool",
+            "content": str(tool_feedback),
             "tool_call_id": function_call.id
         })
 
