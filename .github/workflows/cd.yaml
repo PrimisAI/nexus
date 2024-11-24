@@ -28,6 +28,11 @@ jobs:
         run: |
           git checkout -B ${{ github.ref_name }} ${{ github.sha }}
 
+      - name: Setup | Sync Dependencies
+        run: |
+          python -m pip install --upgrade toml
+          python scripts/sync_dependencies.py
+
       - name: Action | Semantic Version Release
         id: release
         uses: python-semantic-release/python-semantic-release@v9.12.0
