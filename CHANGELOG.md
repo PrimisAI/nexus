@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.2.0 (2024-11-24)
+
+### Features
+
+* feat: deployment to PyPI (#7) ([`0fbac84`](https://github.com/PrimisAI/nexus/commit/0fbac84f6efeb8a8ff2c92384d7f9749fd0ed7be))
+
+
 ## v0.1.0 (2024-11-24)
 
 ### Bug Fixes
@@ -8,6 +15,8 @@
 * fix: write permissions in `cd` ([`36584ec`](https://github.com/PrimisAI/nexus/commit/36584ec8b9c48e57cb1711fb4241988c2c37a2d9))
 
 ### Chores
+
+* chore(release): 🚀 bump version to 0.1.0 ([`775f8f0`](https://github.com/PrimisAI/nexus/commit/775f8f04b3fb3d49052c4a1f4d2abfa512c60c58))
 
 * chore(package): moved package `__init__` ([`c3e4b15`](https://github.com/PrimisAI/nexus/commit/c3e4b15355e65d27b80736546eaa733cc0acd6dd))
 
