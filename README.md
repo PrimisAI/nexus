@@ -1,5 +1,9 @@
 # PrimisAI Nexus
 
+![Continuous Delivery](https://github.com/PrimisAI/nexus/actions/workflows/cd.yaml/badge.svg) ![PyPI - Version](https://img.shields.io/pypi/v/primisai)
+ ![Python Version from PEP 621 TOML](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FPrimisAI%2Fnexus%2Fmain%2Fpyproject.toml)
+
+
 PrimisAI Nexus is a powerful and flexible Python package for managing AI agents and coordinating complex tasks using LLMs. It provides a robust framework for creating, managing, and interacting with multiple specialized AI agents under the supervision of a central coordinator.
 
 ## Features
@@ -13,10 +17,20 @@ PrimisAI Nexus is a powerful and flexible Python package for managing AI agents 
 
 ## Installation
 
-You can install PrimisAI Nexus using pip:
+You can install PrimisAI Nexus directly from PyPI using pip:
 
 ```bash
 pip install primisai
+```
+
+### Building from Source
+
+If you prefer to build the package from source, clone the repository and install it with pip:
+
+```bash
+git clone git@github.com:PrimisAI/nexus.git
+cd nexus
+pip install -e .
 ```
 
 ## Quick Start
@@ -24,8 +38,8 @@ pip install primisai
 Here's a simple example to get you started with Nexus:
 
 ```python
-from primis.nexus.core import AI, Agent, Supervisor
-from primis.nexus.utils.debugger import Debugger
+from primisai.nexus.core import AI, Agent, Supervisor
+from primisai.nexus.utils.debugger import Debugger
 
 # Configure your OpenAI API key
 llm_config = {
