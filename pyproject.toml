@@ -21,6 +21,12 @@ classifiers = [
     "Operating System :: OS Independent"
 ]
 
+[project.urls]
+changelog = "https://github.com/PrimisAI/nexus/blob/main/CHANGELOG.md"
+homepage = "https://github.com/PrimisAI/nexus"
+issues = "https://github.com/PrimisAI/nexus/issues"
+repository = "https://github.com/PrimisAI/nexus.git"
+
 [tool.setuptools]
 packages = { find = { exclude = ["tests*"] } }
 include-package-data = true
