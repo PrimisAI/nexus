@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## v0.2.2 (2024-11-24)
+
+### Bug Fixes
+
+* fix: sync dependencies (#9) ([`f66d8da`](https://github.com/PrimisAI/nexus/commit/f66d8dabfcf2f37f2ed8aa4b81ff4d990f474e11))
+
+
 ## v0.2.1 (2024-11-24)
 
 ### Bug Fixes
@@ -16,6 +23,10 @@
 * linter for PRs
 
 * job name changed ([`e042488`](https://github.com/PrimisAI/nexus/commit/e04248851d0067a2ec72e15e7e7e86c9a9509a5e))
+
+### Chores
+
+* chore(release): 🚀 bump version to 0.2.1 ([`577e9d3`](https://github.com/PrimisAI/nexus/commit/577e9d3b0819823dc2d14bb72307d52e859cdbcf))
 
 
 ## v0.2.0 (2024-11-24)
