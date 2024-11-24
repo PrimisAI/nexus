@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=42", "wheel", "build"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "primisai"
+version = "0.0.0"
+authors = [
+    { name = "PrimisAI", email = "info@primis.ai" }
+]
+description = "Nexus is a powerful and flexible Python package for managing AI agents and coordinating complex tasks using LLMs."
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+dependencies = []  # Placeholder: Will be dynamically added via requirements.txt
+keywords = ["AI", "LLM", "framework", "AI agents"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent"
+]
+
+[tool.setuptools]
+packages = { find = { exclude = ["tests*"] } }
+include-package-data = true
+
+[tool.semantic_release]
+version_variables = ["primisai/__init__.py:__version__"]
+version_toml = ["pyproject.toml:project.version"]
+version_source = "commit"
+commit_message = "chore(release): 🚀 bump version to {version}"
