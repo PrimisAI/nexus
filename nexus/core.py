@@ -154,9 +154,21 @@ and comprehensive, as the agent operates independently without direct communicat
         agent_instruction = json.loads(function_call.function.arguments)['agent_instruction']
         thinking_process = json.loads(function_call.function.arguments)['thinking_process']
         with open("chat.jsonl", 'a') as file:
-            file.write(json.dumps({"role": "orchestrator", "action": "thinking", "content": thinking_process}) + '\n')
-        with open("chat.jsonl", 'a') as file:
-            file.write(json.dumps({"role": "orchestrator", "action": "input", "content": agent_instruction}) + '\n')
+            file.write(
+                json.dumps({
+                    "role": "orchestrator",
+                    "to": target_agent_name,
+                    "action": "thinking",
+                    "content": thinking_process
+                }) + '\n')
+        # with open("chat.jsonl", 'a') as file:
+        #     file.write(
+        #         json.dumps({
+        #             "role": "orchestrator",
+        #             "to": target_agent_name,
+        #             "action": "input",
+        #             "content": agent_instruction
+        #         }) + '\n')
 
         self.debugger.log(f"Agent: {target_agent_name} | Instruction: {agent_instruction} | Thinking: {thinking_process}")
 
@@ -165,7 +177,13 @@ and comprehensive, as the agent operates independently without direct communicat
                 agent_response = agent.chat(task=agent_instruction)
                 self.debugger.log(f"{target_agent_name}: {agent_response}")
                 with open("chat.jsonl", 'a') as file:
-                    file.write(json.dumps({"role": target_agent_name, "action": "output", "content": agent_response}) + '\n')
+                    file.write(
+                        json.dumps({
+                            "role": target_agent_name,
+                            "to": "orchestrator",
+                            "action": "output",
+                            "content": agent_response
+                        }) + '\n')
                 return agent_response
 
         return f"Error: No agent found with name '{target_agent_name}'"
@@ -203,7 +221,7 @@ and comprehensive, as the agent operates independently without direct communicat
             if "exit" in user_input:
                 break
             orchestrator_output = self.process_user_input(user_query=user_input)
-            print(f"Orchestrator: {orchestrator_output}")
+        print(self.chat_history)
 
     def talk(self, message):
 

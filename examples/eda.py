@@ -28,7 +28,6 @@ llm_config = {'model': os.getenv('LLM_MODEL'), 'api_key': os.getenv('LLM_API_KEY
 
 # def execute_command(argument: str):
 #     try:
-
 #         result = subprocess.run(argument, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 #         output = result.stdout + result.stderr
 #         if result.returncode == 0:
@@ -38,67 +37,44 @@ llm_config = {'model': os.getenv('LLM_MODEL'), 'api_key': os.getenv('LLM_API_KEY
 #     except Exception as e:
 #         return {"status": "error", "output": str(e)}
 
-# function_metadata = {
-#     "type": "function",
-#     "function": {
-#         "name":
-#             "execute_command",
-#         "description":
-#             "Execute a command on the Ubuntu terminal and capture the output or error. This function is called when user wants to execute any command on terminal",
-#         "parameters": {
-#             "type": "object",
-#             "properties": {
-#                 "argument": {
-#                     "type": "string",
-#                     "description": "Command to execute on the Ubuntu terminal."
-#                 }
-#             },
-#             "required": ["argument"]
-#         }
-#     }
-# }
+import uuid
 
-# tools = [{"tool": execute_command, "metadata": function_metadata}]
-
-# # Initialize agents
-# planner = Agent(
-#     name="Planner",
-#     system_message=
-#     "You are a professional Verilog test planner who writes test plans when users ask for code. Don't assume; ask for complete information if it's missing.",
-#     llm_config=llm_config)
-
-# coder = Agent(
-#     name="Coder",
-#     system_message="You are a professional Verilog programmer. Don't assume; ask for complete information if it's missing.",
-#     llm_config=llm_config)
-
-# debugger = Agent(
-#     name="Debugger",
-#     system_message=
-#     "You are a professional debugger programmer. Don't assume; ask for complete information if it's missing. You can access terminal to run iverilog to test code syntax and functionality. You cannot write code from your own. You should ask for code as input",
-#     llm_config=llm_config,
-#     tools=tools)
-
-# # Initialize orchestrator
-# orchestrator = Orchestrator(name="Orchestrator", llm_config=llm_config)
-# orchestrator.system_message = ("Think you are a hardware design center manager who controls other agents. " +
-#                                orchestrator.system_message)
-
-# orchestrator.register_agent(planner)
-# orchestrator.register_agent(coder)
-# orchestrator.register_agent(debugger)
-
-# orchestrator.talk(message="Here will be user message")
+active_sessions = {}
 
 
 def execute_command(argument: str):
     try:
-        result = subprocess.run(argument, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        output = result.stdout + result.stderr
-        if result.returncode == 0:
-            return {"status": "success", "output": output.strip()}
+        command = argument
+
+        # Check if there's an available session
+        if active_sessions:
+            session_name = next(iter(active_sessions))
         else:
-            return {"status": "error", "output": output.strip()}
+            # Generate a unique session name if no sessions are available
+            session_name = f"session_{uuid.uuid4().hex[:8]}"
+            active_sessions[session_name] = True
+
+            # Create a new detached tmux session
+            subprocess.run(["tmux", "new-session", "-d", "-s", session_name])
+
+            # Open a new terminal window and attach it to the tmux session
+            # Replace 'gnome-terminal' with 'xterm' or another terminal emulator if needed
+            subprocess.Popen(["gnome-terminal", "--", "tmux", "attach-session", "-t", session_name])
+
+        # Send the command to the tmux session
+        subprocess.run(["tmux", "send-keys", "-t", session_name, "clear", "Enter"])  # Clear the screen first
+        subprocess.run(["tmux", "send-keys", "-t", session_name, command, "Enter"])
+
+        # Wait for the command to finish (you might need to adjust this)
+        time.sleep(2)
+
+        # Capture the output
+        result = subprocess.run(["tmux", "capture-pane", "-t", session_name, "-p", "-S", "-1000", "-J"],
+                                stdout=subprocess.PIPE,
+                                text=True)
+        output = result.stdout.strip()
+
+        return {"status": "success", "output": output, "session": session_name}
     except Exception as e:
         return {"status": "error", "output": str(e)}
 
@@ -129,29 +105,38 @@ tools = [{"tool": execute_command, "metadata": function_metadata}]
 planner = Agent(
     name="Planner",
     system_message=
-    "You are a professional Verilog test planner who writes test plans when users ask for code. Don't assume; ask for complete information if it's missing.",
+    "You are a professional Verilog RTL planner. When users request Verilog code, your task is to create an initial plan for writing the code. Never assume details and always ask for complete information if anything is unclear or missing.",
     llm_config=llm_config)
 
 coder = Agent(
     name="Coder",
-    system_message="You are a professional Verilog programmer. Don't assume; ask for complete information if it's missing.",
+    system_message=
+    "You are a professional Verilog programmer. Always request complete information if anything is unclear or missing. Your task is to write Verilog code along with its corresponding testbench. The testbench must include instructions to generate a waveform.vcd file for visualization in GTKWave. Ensure your code is complete, functional, and adheres to Verilog best practices.",
     llm_config=llm_config)
 
 debugger = Agent(
     name="Debugger",
     system_message=
-    "You are a professional debugger programmer. Don't assume; ask for complete information if it's missing. You can access terminal to run iverilog to test code syntax and functionality. You cannot write code from your own. You should ask for code as input",
+    """You are a professional debugger and programmer specializing in Verilog. Always request complete information if anything is unclear or missing. You can access the terminal to run iverilog for testing code syntax and functionality, but you cannot generate code independently—always ask for the necessary code as input.
+
+If you need to create files and execute iverilog, first ensure the ./verification_agent_env folder exists (create it if necessary). When writing code, always place the main Verilog code in top.v and the testbench in tb.v.
+
+When asked to check syntax or functionality, ensure the testbench is provided. If not, create an appropriate testbench that generates a waveform.vcd file for visualization. You must follow these file naming conventions to proceed with the process. Lastly open gtkwave to visualize using: `gtkwave -S verification_agent_env/signals.tcl verification_agent_env/waveform.vcd`""",
     llm_config=llm_config,
     tools=tools)
 
-# Initialize orchestrator
-orchestrator = Orchestrator(name="Orchestrator", llm_config=llm_config)
-orchestrator.system_message = ("Think you are a hardware design center manager who controls other agents. " +
-                               orchestrator.system_message)
+# Initialize supervisor
+supervisor = Orchestrator(name="supervisor", llm_config=llm_config)
+supervisor.system_message = (
+    """Think of yourself as a hardware design center manager overseeing other agents. When a user requests Verilog code, follow this process:
+1. First, consult the planner agent to create an initial plan for writing the code.
+2. Then, assign the task to the coder agent to write the Verilog code based on the plan.
+3. Once the coder returns the Verilog code, you will send it to the Debugger agent to check its syntax and functionality using `iverilog`.
+4. Ensure that the Debugger agent receives the code from the coder agent for validation.""" + supervisor.system_message)
 
-orchestrator.register_agent(planner)
-orchestrator.register_agent(coder)
-orchestrator.register_agent(debugger)
+supervisor.register_agent(planner)
+supervisor.register_agent(coder)
+supervisor.register_agent(debugger)
 
 
 def read_new_lines(file_path, last_position):
@@ -174,24 +159,31 @@ def display_message(message, container):
     role = message["role"]
     action = message.get("action", "")
     content = message["content"]
+    to_ = message.get("to", "")
 
     if role == "user":
-        container.chat_message("user").markdown(content)
+        container.chat_message("user", avatar="👦🏻").markdown(content)
+
     elif role == "orchestrator":
         if action == "output":
-            container.chat_message("assistant").markdown(content)
+            container.chat_message("assistant", avatar="🤖").markdown(content)
+        elif action == "thinking":
+            container.chat_message("assistant",
+                                   avatar="🧠").markdown(f"**Thinking about {to_[0].upper()+to_[1:]} Agent**\n\n{content}")
         else:
-            with container.expander(f"Orchestrator - {action.capitalize()}", expanded=False):
-                if action == "thinking":
-                    st.info(content)
-                elif action == "input":
-                    st.success(content)
+            container.chat_message("assistant", avatar="🤖").markdown(f"**{action.capitalize()}:**\n\n{content}")
+
     elif role == "coder":
-        with container.expander("Coder Output", expanded=False):
-            st.code(content)
+        container.chat_message("assistant", avatar="💻").markdown(f"**Coder to Supervisor**\n```verilog\n{content}\n```")
+
+    elif role == "planner":
+        container.chat_message("assistant", avatar="📋").markdown(f"**Planner to Supervisor**\n\n{content}")
+
+    elif role == "debugger":
+        container.chat_message("assistant", avatar="🔍").markdown(f"**Debugger to Supervisor**\n\n{content}")
+
     else:
-        with container.expander(f"{role.capitalize()}", expanded=False):
-            st.write(content)
+        container.chat_message("assistant").markdown(f"**{role.capitalize()}:**\n\n{content}")
 
 
 def update_chat(chat_container):
@@ -208,8 +200,17 @@ def update_chat(chat_container):
 
 
 def main():
-    st.set_page_config(page_title="Chatbot with Orchestrator", layout="wide")
-    st.title("Chatbot with Orchestrator")
+    st.set_page_config(page_title="Chatbot with supervisor", layout="wide")
+    st.markdown("""
+    <style>
+    .centered-title {
+        text-align: center;
+    }
+    </style>
+    """,
+                unsafe_allow_html=True)
+
+    st.markdown("<h2 class='centered-title'>NexusHDL</h2>", unsafe_allow_html=True)
 
     # Initialize chat history and file position
     if "messages" not in st.session_state:
@@ -232,10 +233,12 @@ def main():
         # Add user message to chat history and display immediately
         st.session_state.messages.append({"role": "user", "content": user_input})
         with chat_container:
-            st.chat_message("user").markdown(user_input)
-
-        # Call the orchestrator in a separate thread
-        thread = threading.Thread(target=orchestrator.talk, args=(user_input,))
+            st.chat_message("user", avatar="👦🏻").markdown(user_input)
+            placeholder = st.empty()
+            with placeholder.container():
+                st.spinner("Thinking...")
+        # Call the supervisor in a separate thread
+        thread = threading.Thread(target=supervisor.talk, args=(user_input,))
         thread.start()
 
         # Continuously check for new messages
@@ -244,14 +247,14 @@ def main():
             if update_chat(chat_container):
                 start_time = time.time()  # Reset the timeout if new messages are received
 
-            # Check if the last message is from the orchestrator with action "output"
-            if (st.session_state.messages and st.session_state.messages[-1]["role"] == "orchestrator" and
+            # Check if the last message is from the supervisor with action "output"
+            if (st.session_state.messages and st.session_state.messages[-1]["role"] == "supervisor" and
                     st.session_state.messages[-1].get("action") == "output"):
                 break
 
             time.sleep(2)  # Short delay to prevent excessive checking
 
-        # Wait for the orchestrator thread to complete
+        # Wait for the supervisor thread to complete
         thread.join()
 
         # Final update to ensure all messages are displayed
