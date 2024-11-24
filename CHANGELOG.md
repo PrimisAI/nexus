@@ -1,7 +1,28 @@
 # CHANGELOG
 
 
+## v0.2.1 (2024-11-24)
+
+### Bug Fixes
+
+* fix: general info update (#8)
+
+* updated `README`
+
+* badges
+
+* added `project.urls`
+
+* linter for PRs
+
+* job name changed ([`e042488`](https://github.com/PrimisAI/nexus/commit/e04248851d0067a2ec72e15e7e7e86c9a9509a5e))
+
+
 ## v0.2.0 (2024-11-24)
+
+### Chores
+
+* chore(release): 🚀 bump version to 0.2.0 ([`8318ddc`](https://github.com/PrimisAI/nexus/commit/8318ddc5e1466679a3812c5d9003d80de016e0da))
 
 ### Features
 
