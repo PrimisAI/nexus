@@ -1,4 +1,6 @@
 name: Continuous Delivery
+permissions:
+  contents: write
 
 on:
   push:
@@ -20,6 +22,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
+          token: ${{ secrets.PAT }}
 
       - name: Setup | Force correct release branch on workflow sha
         run: |
