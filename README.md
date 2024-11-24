@@ -1,6 +1,6 @@
-# Nexus
+# PrimisAI Nexus
 
-Nexus is a powerful and flexible Python package for managing AI agents and coordinating complex tasks using LLMs. It provides a robust framework for creating, managing, and interacting with multiple specialized AI agents under the supervision of a central coordinator.
+PrimisAI Nexus is a powerful and flexible Python package for managing AI agents and coordinating complex tasks using LLMs. It provides a robust framework for creating, managing, and interacting with multiple specialized AI agents under the supervision of a central coordinator.
 
 ## Features
 
@@ -13,10 +13,10 @@ Nexus is a powerful and flexible Python package for managing AI agents and coord
 
 ## Installation
 
-You can install Nexus using pip:
+You can install PrimisAI Nexus using pip:
 
 ```bash
-pip install -e .
+pip install primisai
 ```
 
 ## Quick Start
@@ -24,8 +24,8 @@ pip install -e .
 Here's a simple example to get you started with Nexus:
 
 ```python
-from nexus.core import AI, Agent, Supervisor
-from nexus.utils.debugger import Debugger
+from primis.nexus.core import AI, Agent, Supervisor
+from primis.nexus.utils.debugger import Debugger
 
 # Configure your OpenAI API key
 llm_config = {
@@ -56,7 +56,7 @@ For detailed documentation on each module and class, please refer to the inline 
 
 ## Advanced Usage
 
-Nexus allows for complex interactions between multiple agents. You can create specialized agents for different tasks, register them with a supervisor, and let the supervisor manage the flow of information and task delegation.
+PrimisAI Nexus allows for complex interactions between multiple agents. You can create specialized agents for different tasks, register them with a supervisor, and let the supervisor manage the flow of information and task delegation.
 
 ```python
 # Example of creating a specialized agent with tools
