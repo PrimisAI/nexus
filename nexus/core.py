@@ -81,11 +81,12 @@ class Agent(AI):
             function_call = response.message.tool_calls[0]
             target_tool_name = function_call.function.name
             tool_instruction = json.loads(function_call.function.arguments)['argument']
-
+            print(tool_instruction)
             target_tool = next((tool for tool in self.tools if tool['metadata']['function']['name'] == target_tool_name), None)
 
             if target_tool:
                 tool_feedback = target_tool['tool'](tool_instruction)
+                print(tool_feedback)
                 self.chat_history.append({"role": "tool", "content": str(tool_feedback), "tool_call_id": function_call.id})
 
 

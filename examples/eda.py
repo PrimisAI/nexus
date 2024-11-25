@@ -18,6 +18,7 @@ import json
 import time
 import os
 import threading
+import uuid
 
 load_dotenv()
 
@@ -26,55 +27,35 @@ from nexus.core import Agent, Orchestrator
 
 llm_config = {'model': os.getenv('LLM_MODEL'), 'api_key': os.getenv('LLM_API_KEY'), 'base_url': os.getenv('LLM_BASE_URL')}
 
-# def execute_command(argument: str):
-#     try:
-#         result = subprocess.run(argument, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-#         output = result.stdout + result.stderr
-#         if result.returncode == 0:
-#             return {"status": "success", "output": output.strip()}
-#         else:
-#             return {"status": "error", "output": output.strip()}
-#     except Exception as e:
-#         return {"status": "error", "output": str(e)}
-
-import uuid
-
-active_sessions = {}
+st.set_page_config(page_title="NexusHDL", page_icon="🖥️", layout="wide")
 
 
 def execute_command(argument: str):
     try:
+        tmux_session = "nexushdl"
         command = argument
 
-        # Check if there's an available session
-        if active_sessions:
-            session_name = next(iter(active_sessions))
-        else:
-            # Generate a unique session name if no sessions are available
-            session_name = f"session_{uuid.uuid4().hex[:8]}"
-            active_sessions[session_name] = True
-
-            # Create a new detached tmux session
-            subprocess.run(["tmux", "new-session", "-d", "-s", session_name])
-
-            # Open a new terminal window and attach it to the tmux session
-            # Replace 'gnome-terminal' with 'xterm' or another terminal emulator if needed
-            subprocess.Popen(["gnome-terminal", "--", "tmux", "attach-session", "-t", session_name])
+        # Clear the tmux screen
+        clear_result = subprocess.run(["tmux", "send-keys", "-t", tmux_session, "clear", "Enter"], capture_output=True, text=True)
+        if clear_result.returncode != 0:
+            return {"status": "error", "output": f"Failed to clear tmux screen: {clear_result.stderr}"}
 
         # Send the command to the tmux session
-        subprocess.run(["tmux", "send-keys", "-t", session_name, "clear", "Enter"])  # Clear the screen first
-        subprocess.run(["tmux", "send-keys", "-t", session_name, command, "Enter"])
+        send_result = subprocess.run(["tmux", "send-keys", "-t", tmux_session, command, "Enter"], capture_output=True, text=True)
+        if send_result.returncode != 0:
+            return {"status": "error", "output": f"Failed to send command to tmux: {send_result.stderr}"}
 
         # Wait for the command to finish (you might need to adjust this)
         time.sleep(2)
 
         # Capture the output
-        result = subprocess.run(["tmux", "capture-pane", "-t", session_name, "-p", "-S", "-1000", "-J"],
-                                stdout=subprocess.PIPE,
-                                text=True)
-        output = result.stdout.strip()
+        capture_result = subprocess.run(["tmux", "capture-pane", "-t", tmux_session, "-p", "-S", "-1000", "-J"],
+                                        capture_output=True,
+                                        text=True)
+        if capture_result.returncode != 0:
+            return {"status": "error", "output": f"Failed to capture tmux output: {capture_result.stderr}"}
 
-        return {"status": "success", "output": output, "session": session_name}
+        return {"status": "success", "output": capture_result.stdout, "session": tmux_session}
     except Exception as e:
         return {"status": "error", "output": str(e)}
 
@@ -200,7 +181,7 @@ def update_chat(chat_container):
 
 
 def main():
-    st.set_page_config(page_title="Chatbot with supervisor", layout="wide")
+
     st.markdown("""
     <style>
     .centered-title {
@@ -265,4 +246,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
