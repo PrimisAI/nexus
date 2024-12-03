@@ -65,21 +65,21 @@ class Agent(AI):
         """
         self.chat_history.append({"role": "system", "content": message})
 
-    def chat(self, task: str) -> str:
+    def chat(self, query: str) -> str:
         """
         Process a chat interaction with the agent.
 
         Args:
-            task (str): The task or query to process.
+            query (str): The query to process.
 
         Returns:
-            str: The agent's response to the task.
+            str: The agent's response to the query.
 
         Raises:
-            RuntimeError: If there's an error processing the task or using tools.
+            RuntimeError: If there's an error processing the query or using tools.
         """
-        self.debugger.log(f"Task received: {task}")
-        self.chat_history.append({'role': 'user', 'content': task})
+        self.debugger.log(f"Query received: {query}")
+        self.chat_history.append({'role': 'user', 'content': query})
 
         while True:
             try:
@@ -110,19 +110,29 @@ class Agent(AI):
             message (ChatCompletionMessage): The message containing the tool call.
 
         Raises:
-            ValueError: If the specified tool is not found.
+            ValueError: If the specified tool is not found or if there's an error in processing arguments.
         """
         self.chat_history.append(message)
         function_call = message.tool_calls[0]
         target_tool_name = function_call.function.name
-        tool_instruction = json.loads(function_call.function.arguments)['argument']
+
+        try:
+            tool_arguments = json.loads(function_call.function.arguments)
+        except json.JSONDecodeError:
+            raise ValueError(f"Invalid JSON in function arguments: {function_call.function.arguments}")
 
         target_tool = next((tool for tool in self.tools if tool['metadata']['function']['name'] == target_tool_name), None)
 
         if not target_tool:
             raise ValueError(f"Tool '{target_tool_name}' not found")
 
-        tool_feedback = target_tool['tool'](tool_instruction)
+        tool_function = target_tool['tool']
+
+        if hasattr(tool_function, '__kwdefaults__'):
+            tool_feedback = tool_function(**tool_arguments)
+        else:
+            tool_feedback = tool_function(tool_arguments)
+
         self.chat_history.append({
             "role": "tool",
             "content": str(tool_feedback),

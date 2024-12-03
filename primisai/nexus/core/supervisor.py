@@ -6,7 +6,7 @@ users and multiple specialized AI agents.
 """
 
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from openai.types.chat import ChatCompletionMessage
 from primisai.nexus.core import AI
 from primisai.nexus.core import Agent
@@ -41,8 +41,8 @@ class Supervisor(AI):
         self.system_message = self._get_default_system_message()
         self.registered_agents: List[Agent] = []
         self.available_tools: List[Dict[str, Any]] = []
-        self.chat_history: List[Dict[str, str]] = []
-        self.debugger = Debugger(name="Supervisor")
+        self.chat_history: List[Dict[str, str]] = [{'role': 'system', 'content': self.system_message}]
+        self.debugger = Debugger(name=self.name)
         self.debugger.start_session()
 
     @staticmethod
@@ -65,12 +65,12 @@ Your task is to manage the following agents:"""
         """
         self.system_message = {"role": "system", "content": system_prompt}
 
-    def register_agent(self, agent: Agent) -> None:
+    def register_agent(self, agent: Union['Agent', 'Supervisor']) -> None:
         """
         Register a new agent with the Supervisor.
 
         Args:
-            agent (Agent): The agent to register.
+            agent (Union[Agent, Supervisor]): The agent or supervisor to register.
         """
         self.registered_agents.append(agent)
         self._add_agent_tool(agent)
@@ -143,18 +143,18 @@ Your task is to manage the following agents:"""
 
         for agent in self.registered_agents:
             if agent.name.lower() == target_agent_name:
-                agent_response = agent.chat(task=agent_instruction)
+                agent_response = agent.chat(query=agent_instruction)
                 self.debugger.log(f"{target_agent_name}: {agent_response}")
                 return agent_response
 
         raise ValueError(f"No agent found with name '{target_agent_name}'")
 
-    def process_user_input(self, user_query: str) -> str:
+    def chat(self, query: str) -> str:
         """
         Process user input and generate a response using the appropriate agents.
 
         Args:
-            user_query (str): The user's input query.
+            query (str): The user's input query.
 
         Returns:
             str: The final response to the user's query.
@@ -162,18 +162,18 @@ Your task is to manage the following agents:"""
         Raises:
             RuntimeError: If there's an error in processing the user input.
         """
-        self.debugger.log(f"User: {user_query}")
-        self.chat_history.append({'role': 'user', 'content': user_query})
+        self.debugger.log(f"User: {query}")
+        self.chat_history.append({'role': 'user', 'content': query})
 
         try:
             while True:
                 supervisor_response = self.generate_response(self.chat_history, tools=self.available_tools, use_tools=True).choices[0]
 
                 if supervisor_response.finish_reason == "stop":
-                    user_query_answer = supervisor_response.message.content
-                    self.debugger.log(f"Supervisor: {user_query_answer}")
-                    self.chat_history.append({"role": "assistant", "content": user_query_answer})
-                    return user_query_answer
+                    query_answer = supervisor_response.message.content
+                    self.debugger.log(f"{self.name}: {query_answer}")
+                    self.chat_history.append({"role": "assistant", "content": query_answer})
+                    return query_answer
 
                 self.chat_history.append(supervisor_response.message)
 
@@ -201,7 +201,6 @@ Your task is to manage the following agents:"""
         This method initiates a loop that continuously processes user input
         until the user decides to exit.
         """
-        self.chat_history = [{'role': 'system', 'content': self.system_message}]
         print("Starting interactive session. Type 'exit' to end the session.")
         while True:
             user_input = input("User: ").strip()
@@ -209,7 +208,7 @@ Your task is to manage the following agents:"""
                 print("Ending session. Goodbye!")
                 break
             try:
-                supervisor_output = self.process_user_input(user_query=user_input)
+                supervisor_output = self.chat(query=user_input)
                 print(f"Supervisor: {supervisor_output}")
             except Exception as e:
                 print(f"An error occurred: {str(e)}")

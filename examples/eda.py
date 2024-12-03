@@ -62,14 +62,26 @@ debugger = Agent(
     tools=tools,
     use_tools=True)
 
+writer = Agent(
+    name="Writer",
+    system_message="You are a professional Writer.",
+    llm_config=llm_config)
+
+
+# Initialize sub-supervisor
+sub_supervisor = Supervisor(name="SubSupervisor", llm_config=llm_config)
+sub_supervisor.system_message = ("You are a sub-supervisor, and you assist the supervisor in writing appropriate emails.")
+sub_supervisor.register_agent(writer)
+
+
 # Initialize supervisor
 supervisor = Supervisor(name="Supervisor", llm_config=llm_config)
 supervisor.system_message = ("Think you are a hardware design center manager who controls other agents. " +
                                supervisor.system_message)
-
 supervisor.register_agent(planner)
 supervisor.register_agent(coder)
 supervisor.register_agent(debugger)
+supervisor.register_agent(sub_supervisor)
 
-supervisor.display_agent_graph()
+# supervisor.display_agent_graph()
 supervisor.start_interactive_session()
