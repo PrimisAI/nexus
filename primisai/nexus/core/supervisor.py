@@ -21,13 +21,14 @@ class Supervisor(AI):
     and coordinates complex multi-step processes.
     """
 
-    def __init__(self, name: str, llm_config: Dict[str, str]):
+    def __init__(self, name: str, llm_config: Dict[str, str], use_agents: bool=True):
         """
         Initialize the Supervisor instance.
 
         Args:
             name (str): The name of the supervisor.
             llm_config (Dict[str, str]): Configuration for the language model.
+            use_agents (bool): Whether to use agents or not.
 
         Raises:
             ValueError: If the name is empty.
@@ -41,6 +42,7 @@ class Supervisor(AI):
         self.system_message = self._get_default_system_message()
         self.registered_agents: List[Agent] = []
         self.available_tools: List[Dict[str, Any]] = []
+        self.use_agents = use_agents
         self.chat_history: List[Dict[str, str]] = [{'role': 'system', 'content': self.system_message}]
         self.debugger = Debugger(name=self.name)
         self.debugger.start_session()
@@ -167,7 +169,7 @@ Your task is to manage the following agents:"""
 
         try:
             while True:
-                supervisor_response = self.generate_response(self.chat_history, tools=self.available_tools, use_tools=True).choices[0]
+                supervisor_response = self.generate_response(self.chat_history, tools=self.available_tools, use_tools=self.use_agents).choices[0]
 
                 if supervisor_response.finish_reason == "stop":
                     query_answer = supervisor_response.message.content
