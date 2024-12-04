@@ -21,13 +21,14 @@ class Supervisor(AI):
     and coordinates complex multi-step processes.
     """
 
-    def __init__(self, name: str, llm_config: Dict[str, str], use_agents: bool=True):
+    def __init__(self, name: str, llm_config: Dict[str, str], system_message: Optional[str] = None, use_agents: bool=True):
         """
         Initialize the Supervisor instance.
 
         Args:
             name (str): The name of the supervisor.
             llm_config (Dict[str, str]): Configuration for the language model.
+            system_message (Optional[str]): The initial system message for the agent.
             use_agents (bool): Whether to use agents or not.
 
         Raises:
@@ -39,7 +40,7 @@ class Supervisor(AI):
             raise ValueError("Supervisor name cannot be empty")
 
         self.name = name
-        self.system_message = self._get_default_system_message()
+        self.system_message = system_message if system_message is not None else self._get_default_system_message()
         self.registered_agents: List[Agent] = []
         self.available_tools: List[Dict[str, Any]] = []
         self.use_agents = use_agents
@@ -54,9 +55,7 @@ class Supervisor(AI):
 1. Understanding user queries and determining which agent(s) can best address them.
 2. Carefully planning the sequence of agent calls to ensure relevance.
 3. Passing outputs from one agent as inputs to another when necessary.
-4. Calling agents sequentially to execute complex tasks in a coordinated manner.
-
-Your task is to manage the following agents:"""
+4. Calling agents sequentially to execute complex tasks in a coordinated manner."""
 
     def configure_system_prompt(self, system_prompt: str) -> None:
         """
@@ -76,7 +75,7 @@ Your task is to manage the following agents:"""
         """
         self.registered_agents.append(agent)
         self._add_agent_tool(agent)
-        self.system_message += f"{agent.name}: {agent.system_message}\n"
+        # self.system_message += f"{agent.name}: {agent.system_message}\n"
 
     def _add_agent_tool(self, agent: Agent) -> None:
         """
@@ -290,31 +289,33 @@ Your task is to manage the following agents:"""
         self.system_message = f"{self._get_default_system_message()}\n\n{agent_descriptions}"
         self.reset_chat_history()
 
-    def display_agent_graph(self):
+    def display_agent_graph(self, indent=""):
         """
         Display a simple ASCII graph in the terminal showing the Supervisor,
-        connected agents, and their available tools.
+        connected agents, sub-supervisors, and their available tools.
         """
-        def _create_branch(length):
-            return "│   " * (length - 1) + "├── "
-
-        print(f"Supervisor: {self.name}")
-        print("│")
+        print(f"{indent}Supervisor: {self.name}")
+        print(f"{indent}│")
 
         for i, agent in enumerate(self.registered_agents):
             is_last_agent = i == len(self.registered_agents) - 1
             agent_prefix = "└── " if is_last_agent else "├── "
-            print(f"{agent_prefix}Agent: {agent.name}")
 
-            if hasattr(agent, 'tools') and agent.tools:
-                tool_depth = 2 if is_last_agent else 1
-                for j, tool in enumerate(agent.tools):
-                    is_last_tool = j == len(agent.tools) - 1
-                    tool_prefix = "└── " if is_last_tool else "├── "
-                    tool_name = tool['metadata']['function']['name'] if 'metadata' in tool else "Unnamed Tool"
-                    print(f"{_create_branch(tool_depth)}{tool_prefix}Tool: {tool_name}")
+            if isinstance(agent, Supervisor):
+                print(f"{indent}{agent_prefix}Sub-Supervisor: {agent.name}")
+                agent.display_agent_graph(indent + ("    " if is_last_agent else "│   "))
             else:
-                print(f"{_create_branch(1)}└── No tools available")
+                print(f"{indent}{agent_prefix}Agent: {agent.name}")
+
+                if hasattr(agent, 'tools') and agent.tools:
+                    tool_indent = indent + ("    " if is_last_agent else "│   ")
+                    for j, tool in enumerate(agent.tools):
+                        is_last_tool = j == len(agent.tools) - 1
+                        tool_prefix = "└── " if is_last_tool else "├── "
+                        tool_name = tool['metadata']['function']['name'] if 'metadata' in tool else "Unnamed Tool"
+                        print(f"{tool_indent}{tool_prefix}Tool: {tool_name}")
+                else:
+                    print(f"{indent}{'    ' if is_last_agent else '│   '}└── No tools available")
 
             if not is_last_agent:
-                print("│")
+                print(f"{indent}│")
