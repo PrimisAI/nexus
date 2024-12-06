@@ -6,7 +6,7 @@ users and multiple specialized AI agents.
 """
 
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from openai.types.chat import ChatCompletionMessage
 from primisai.nexus.core import AI
 from primisai.nexus.core import Agent
@@ -21,13 +21,15 @@ class Supervisor(AI):
     and coordinates complex multi-step processes.
     """
 
-    def __init__(self, name: str, llm_config: Dict[str, str]):
+    def __init__(self, name: str, llm_config: Dict[str, str], system_message: Optional[str] = None, use_agents: bool=True):
         """
         Initialize the Supervisor instance.
 
         Args:
             name (str): The name of the supervisor.
             llm_config (Dict[str, str]): Configuration for the language model.
+            system_message (Optional[str]): The initial system message for the agent.
+            use_agents (bool): Whether to use agents or not.
 
         Raises:
             ValueError: If the name is empty.
@@ -38,11 +40,12 @@ class Supervisor(AI):
             raise ValueError("Supervisor name cannot be empty")
 
         self.name = name
-        self.system_message = self._get_default_system_message()
+        self.system_message = system_message if system_message is not None else self._get_default_system_message()
         self.registered_agents: List[Agent] = []
         self.available_tools: List[Dict[str, Any]] = []
-        self.chat_history: List[Dict[str, str]] = []
-        self.debugger = Debugger(name="Supervisor")
+        self.use_agents = use_agents
+        self.chat_history: List[Dict[str, str]] = [{'role': 'system', 'content': self.system_message}]
+        self.debugger = Debugger(name=self.name)
         self.debugger.start_session()
 
     @staticmethod
@@ -52,9 +55,7 @@ class Supervisor(AI):
 1. Understanding user queries and determining which agent(s) can best address them.
 2. Carefully planning the sequence of agent calls to ensure relevance.
 3. Passing outputs from one agent as inputs to another when necessary.
-4. Calling agents sequentially to execute complex tasks in a coordinated manner.
-
-Your task is to manage the following agents:"""
+4. Calling agents sequentially to execute complex tasks in a coordinated manner."""
 
     def configure_system_prompt(self, system_prompt: str) -> None:
         """
@@ -65,16 +66,16 @@ Your task is to manage the following agents:"""
         """
         self.system_message = {"role": "system", "content": system_prompt}
 
-    def register_agent(self, agent: Agent) -> None:
+    def register_agent(self, agent: Union['Agent', 'Supervisor']) -> None:
         """
         Register a new agent with the Supervisor.
 
         Args:
-            agent (Agent): The agent to register.
+            agent (Union[Agent, Supervisor]): The agent or supervisor to register.
         """
         self.registered_agents.append(agent)
         self._add_agent_tool(agent)
-        self.system_message += f"{agent.name}: {agent.system_message}\n"
+        # self.system_message += f"{agent.name}: {agent.system_message}\n"
 
     def _add_agent_tool(self, agent: Agent) -> None:
         """
@@ -143,18 +144,18 @@ Your task is to manage the following agents:"""
 
         for agent in self.registered_agents:
             if agent.name.lower() == target_agent_name:
-                agent_response = agent.chat(task=agent_instruction)
+                agent_response = agent.chat(query=agent_instruction)
                 self.debugger.log(f"{target_agent_name}: {agent_response}")
                 return agent_response
 
         raise ValueError(f"No agent found with name '{target_agent_name}'")
 
-    def process_user_input(self, user_query: str) -> str:
+    def chat(self, query: str) -> str:
         """
         Process user input and generate a response using the appropriate agents.
 
         Args:
-            user_query (str): The user's input query.
+            query (str): The user's input query.
 
         Returns:
             str: The final response to the user's query.
@@ -162,18 +163,18 @@ Your task is to manage the following agents:"""
         Raises:
             RuntimeError: If there's an error in processing the user input.
         """
-        self.debugger.log(f"User: {user_query}")
-        self.chat_history.append({'role': 'user', 'content': user_query})
+        self.debugger.log(f"User: {query}")
+        self.chat_history.append({'role': 'user', 'content': query})
 
         try:
             while True:
-                supervisor_response = self.generate_response(self.chat_history, tools=self.available_tools, use_tools=True).choices[0]
+                supervisor_response = self.generate_response(self.chat_history, tools=self.available_tools, use_tools=self.use_agents).choices[0]
 
                 if supervisor_response.finish_reason == "stop":
-                    user_query_answer = supervisor_response.message.content
-                    self.debugger.log(f"Supervisor: {user_query_answer}")
-                    self.chat_history.append({"role": "assistant", "content": user_query_answer})
-                    return user_query_answer
+                    query_answer = supervisor_response.message.content
+                    self.debugger.log(f"{self.name}: {query_answer}")
+                    self.chat_history.append({"role": "assistant", "content": query_answer})
+                    return query_answer
 
                 self.chat_history.append(supervisor_response.message)
 
@@ -201,7 +202,6 @@ Your task is to manage the following agents:"""
         This method initiates a loop that continuously processes user input
         until the user decides to exit.
         """
-        self.chat_history = [{'role': 'system', 'content': self.system_message}]
         print("Starting interactive session. Type 'exit' to end the session.")
         while True:
             user_input = input("User: ").strip()
@@ -209,7 +209,7 @@ Your task is to manage the following agents:"""
                 print("Ending session. Goodbye!")
                 break
             try:
-                supervisor_output = self.process_user_input(user_query=user_input)
+                supervisor_output = self.chat(query=user_input)
                 print(f"Supervisor: {supervisor_output}")
             except Exception as e:
                 print(f"An error occurred: {str(e)}")
@@ -289,31 +289,33 @@ Your task is to manage the following agents:"""
         self.system_message = f"{self._get_default_system_message()}\n\n{agent_descriptions}"
         self.reset_chat_history()
 
-    def display_agent_graph(self):
+    def display_agent_graph(self, indent=""):
         """
         Display a simple ASCII graph in the terminal showing the Supervisor,
-        connected agents, and their available tools.
+        connected agents, sub-supervisors, and their available tools.
         """
-        def _create_branch(length):
-            return "│   " * (length - 1) + "├── "
-
-        print(f"Supervisor: {self.name}")
-        print("│")
+        print(f"{indent}Supervisor: {self.name}")
+        print(f"{indent}│")
 
         for i, agent in enumerate(self.registered_agents):
             is_last_agent = i == len(self.registered_agents) - 1
             agent_prefix = "└── " if is_last_agent else "├── "
-            print(f"{agent_prefix}Agent: {agent.name}")
 
-            if hasattr(agent, 'tools') and agent.tools:
-                tool_depth = 2 if is_last_agent else 1
-                for j, tool in enumerate(agent.tools):
-                    is_last_tool = j == len(agent.tools) - 1
-                    tool_prefix = "└── " if is_last_tool else "├── "
-                    tool_name = tool['metadata']['function']['name'] if 'metadata' in tool else "Unnamed Tool"
-                    print(f"{_create_branch(tool_depth)}{tool_prefix}Tool: {tool_name}")
+            if isinstance(agent, Supervisor):
+                print(f"{indent}{agent_prefix}Sub-Supervisor: {agent.name}")
+                agent.display_agent_graph(indent + ("    " if is_last_agent else "│   "))
             else:
-                print(f"{_create_branch(1)}└── No tools available")
+                print(f"{indent}{agent_prefix}Agent: {agent.name}")
+
+                if hasattr(agent, 'tools') and agent.tools:
+                    tool_indent = indent + ("    " if is_last_agent else "│   ")
+                    for j, tool in enumerate(agent.tools):
+                        is_last_tool = j == len(agent.tools) - 1
+                        tool_prefix = "└── " if is_last_tool else "├── "
+                        tool_name = tool['metadata']['function']['name'] if 'metadata' in tool else "Unnamed Tool"
+                        print(f"{tool_indent}{tool_prefix}Tool: {tool_name}")
+                else:
+                    print(f"{indent}{'    ' if is_last_agent else '│   '}└── No tools available")
 
             if not is_last_agent:
-                print("│")
+                print(f"{indent}│")

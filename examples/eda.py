@@ -4,10 +4,13 @@ from dotenv import load_dotenv
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from primisai.nexus.core import Agent, Supervisor
 
-
 load_dotenv()
 
-llm_config = {'model': os.getenv('LLM_MODEL'), 'api_key': os.getenv('LLM_API_KEY'), 'base_url': os.getenv('LLM_BASE_URL')}
+llm_config = {
+    'model': os.getenv('LLM_MODEL'), 
+    'api_key': os.getenv('LLM_API_KEY'), 
+    'base_url': os.getenv('LLM_BASE_URL')
+    }
 
 def execute_command(argument: str):
     try:
@@ -63,9 +66,10 @@ debugger = Agent(
     use_tools=True)
 
 # Initialize supervisor
-supervisor = Supervisor(name="Supervisor", llm_config=llm_config)
-supervisor.system_message = ("Think you are a hardware design center manager who controls other agents. " +
-                               supervisor.system_message)
+supervisor = Supervisor(
+    name="Supervisor", 
+    system_message="Think you are a hardware design center manager who controls other agents.",
+    llm_config=llm_config)
 
 supervisor.register_agent(planner)
 supervisor.register_agent(coder)
