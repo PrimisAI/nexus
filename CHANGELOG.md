@@ -1,11 +1,22 @@
 # CHANGELOG
 
 
+## v0.3.0 (2024-12-06)
+
+### Features
+
+* feat(architecture): multi-level agent hierarchy (#10) ([`486ad47`](https://github.com/PrimisAI/nexus/commit/486ad478455f37bfe697620b434dfc1894512b84))
+
+
 ## v0.2.2 (2024-11-24)
 
 ### Bug Fixes
 
 * fix: sync dependencies (#9) ([`f66d8da`](https://github.com/PrimisAI/nexus/commit/f66d8dabfcf2f37f2ed8aa4b81ff4d990f474e11))
+
+### Chores
+
+* chore(release): 🚀 bump version to 0.2.2 ([`8f47881`](https://github.com/PrimisAI/nexus/commit/8f47881a9e38c624963957241e141d771f66fa1b))
 
 
 ## v0.2.1 (2024-11-24)
