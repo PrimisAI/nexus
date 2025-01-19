@@ -3,7 +3,6 @@
 ![Continuous Delivery](https://github.com/PrimisAI/nexus/actions/workflows/cd.yaml/badge.svg) ![PyPI - Version](https://img.shields.io/pypi/v/primisai)
  ![Python Version from PEP 621 TOML](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FPrimisAI%2Fnexus%2Fmain%2Fpyproject.toml)
 
-
 PrimisAI Nexus is a powerful and flexible Python package for managing AI agents and coordinating complex tasks using LLMs. It provides a robust framework for creating, managing, and interacting with multiple specialized AI agents under the supervision of a central coordinator.
 
 ## Features
@@ -14,6 +13,7 @@ PrimisAI Nexus is a powerful and flexible Python package for managing AI agents 
 - **Debugger Utility**: Integrated debugging capabilities for logging and troubleshooting.
 - **Flexible Configuration**: Easy-to-use configuration options for language models and agents.
 - **Interactive Sessions**: Built-in support for interactive chat sessions with the AI system.
+- **YAML Configuration**: Define complex agent hierarchies using YAML files for easy setup and modification.
 
 ## Installation
 
@@ -63,10 +63,65 @@ supervisor.display_agent_graph()
 supervisor.start_interactive_session()
 ```
 
+## YAML Configuration
+
+PrimisAI Nexus supports defining complex agent hierarchies using YAML configuration files. This feature allows for easy setup and modification of agent structures without changing the Python code.
+
+### Example YAML Configuration
+
+Here's a simple example of a YAML configuration file:
+
+```yaml
+supervisor:
+  name: TaskManager
+  type: supervisor
+  llm_config:
+    model: ${LLM_MODEL}
+    api_key: ${LLM_API_KEY}
+    base_url: ${LLM_BASE_URL}
+  system_message: "You are the task management supervisor."
+  children:
+    - name: TaskCreator
+      type: agent
+      llm_config:
+        model: ${LLM_MODEL}
+        api_key: ${LLM_API_KEY}
+        base_url: ${LLM_BASE_URL}
+      system_message: "You are responsible for creating new tasks."
+      tools:
+        - name: add_task
+          type: function
+          python_path: examples.task_management_with_yaml.task_tools.add_task
+```
+
+To use this YAML configuration:
+
+```python
+from primisai.nexus.config import load_yaml_config, AgentFactory
+
+# Load the YAML configuration
+config = load_yaml_config('path/to/your/config.yaml')
+
+# Create the agent structure
+factory = AgentFactory()
+task_manager = factory.create_from_config(config)
+
+# Start an interactive session
+task_manager.start_interactive_session()
+```
+
+For a more detailed example of YAML configuration, check out the [task management example](examples/task_management_with_yaml).
+
+### Benefits of YAML Configuration
+
+- **Flexibility**: Easily modify agent structures without changing Python code.
+- **Readability**: YAML configurations are human-readable and easy to understand.
+- **Scalability**: Define complex hierarchies of supervisors and agents in a clear, structured manner.
+- **Separation of Concerns**: Keep agent definitions separate from application logic.
+
 ## Documentation
 
 For detailed documentation on each module and class, please refer to the inline docstrings in the source code.
-
 
 ## Advanced Usage
 

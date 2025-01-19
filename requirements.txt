@@ -2,3 +2,4 @@ openai==1.56.0
 python-dotenv==1.0.1
 streamlit>=1.38.0
 pytest==8.3.4
+PyYAML==6.0.2
