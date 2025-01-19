@@ -1,7 +1,18 @@
 # CHANGELOG
 
 
+## v0.4.0 (2025-01-19)
+
+### Features
+
+* feat: enabling `yaml`-based workflows (#11) ([`836e7e0`](https://github.com/PrimisAI/nexus/commit/836e7e06ce3190e87f40cd5ffe59fac284b1b78d))
+
+
 ## v0.3.0 (2024-12-06)
+
+### Chores
+
+* chore(release): 🚀 bump version to 0.3.0 ([`09d278c`](https://github.com/PrimisAI/nexus/commit/09d278c204ea3f3610a29f815f4ae4699f4858b3))
 
 ### Features
 
