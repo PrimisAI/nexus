@@ -1,4 +1,5 @@
 # PrimisAI Nexus
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/nexus-a-lightweight-and-scalable-multi-agent/code-generation-on-verilogeval)](https://paperswithcode.com/sota/code-generation-on-verilogeval?p=nexus-a-lightweight-and-scalable-multi-agent) [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/nexus-a-lightweight-and-scalable-multi-agent/code-generation-on-humaneval)](https://paperswithcode.com/sota/code-generation-on-humaneval?p=nexus-a-lightweight-and-scalable-multi-agent)
 
 ![Continuous Delivery](https://github.com/PrimisAI/nexus/actions/workflows/cd.yaml/badge.svg) ![PyPI - Version](https://img.shields.io/pypi/v/primisai)
  ![Python Version from PEP 621 TOML](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FPrimisAI%2Fnexus%2Fmain%2Fpyproject.toml)
