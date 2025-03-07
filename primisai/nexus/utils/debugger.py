@@ -2,7 +2,7 @@ import logging, os, json
 from datetime import datetime
 
 class Debugger:
-    LOG_DIR = 'logs: ' + str(datetime.now())
+    LOG_DIR = 'logs-' + str(datetime.now().strftime("%Y_%m_%d-%H_%M_%S"))
 
     def __init__(self, name: str, log_level: int = logging.DEBUG):
         self.name = name
