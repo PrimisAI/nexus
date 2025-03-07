@@ -1,7 +1,18 @@
 # CHANGELOG
 
 
+## v0.4.1 (2025-03-07)
+
+### Bug Fixes
+
+* fix: logs filenames compatible with `windows` os (#18) ([`2a98d3e`](https://github.com/PrimisAI/nexus/commit/2a98d3eddbd941df878ecc74ca5cb57bc457af91))
+
+
 ## v0.4.0 (2025-01-19)
+
+### Chores
+
+* chore(release): 🚀 bump version to 0.4.0 ([`bbf0a38`](https://github.com/PrimisAI/nexus/commit/bbf0a380da5b726639fbe74b24d43cbc0f79d953))
 
 ### Features
 
