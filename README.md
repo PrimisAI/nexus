@@ -1,10 +1,14 @@
 # PrimisAI Nexus
-[![arXiv](https://img.shields.io/badge/arXiv-1234.56789-b31b1b.svg)](https://arxiv.org/abs/2502.19091) [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/nexus-a-lightweight-and-scalable-multi-agent/code-generation-on-verilogeval)](https://paperswithcode.com/sota/code-generation-on-verilogeval?p=nexus-a-lightweight-and-scalable-multi-agent) [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/nexus-a-lightweight-and-scalable-multi-agent/code-generation-on-humaneval)](https://paperswithcode.com/sota/code-generation-on-humaneval?p=nexus-a-lightweight-and-scalable-multi-agent)
+[![arXiv](https://img.shields.io/badge/arXiv-2502.19091-b31b1b.svg)](https://arxiv.org/abs/2502.19091) [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/nexus-a-lightweight-and-scalable-multi-agent/code-generation-on-verilogeval)](https://paperswithcode.com/sota/code-generation-on-verilogeval?p=nexus-a-lightweight-and-scalable-multi-agent) [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/nexus-a-lightweight-and-scalable-multi-agent/code-generation-on-humaneval)](https://paperswithcode.com/sota/code-generation-on-humaneval?p=nexus-a-lightweight-and-scalable-multi-agent)
 
 ![Continuous Delivery](https://github.com/PrimisAI/nexus/actions/workflows/cd.yaml/badge.svg) ![PyPI - Version](https://img.shields.io/pypi/v/primisai)
  ![Python Version from PEP 621 TOML](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FPrimisAI%2Fnexus%2Fmain%2Fpyproject.toml)
 
 PrimisAI Nexus is a powerful and flexible Python package for managing AI agents and coordinating complex tasks using LLMs. It provides a robust framework for creating, managing, and interacting with multiple specialized AI agents under the supervision of a central coordinator.
+
+<div align="center">
+<img src="./examples/images/performance-coding.png" width="350"> <img src="./examples/images/performance-timing-closure.png" width="590">
+</div>
 
 ## Features
 
@@ -144,6 +148,16 @@ research_agent = Agent("Researcher", llm_config, tools=tools, system_message="Yo
 supervisor.register_agent(research_agent)
 ```
 
+## Citation
+If you find Nexus useful, please consider citing our preprint.
+```bibtex
+@article{sami2025nexus,
+  title={Nexus: A Lightweight and Scalable Multi-Agent Framework for Complex Tasks Automation},
+  author={Sami, Humza and ul Islam, Mubashir and Charas, Samy and Gandhi, Asav and Gaillardon, Pierre-Emmanuel and Tenace, Valerio},
+  journal={arXiv preprint arXiv:2502.19091},
+  year={2025}
+}
+```
 ## License
 
 This project is licensed under the MIT License.
