@@ -17,6 +17,7 @@ PrimisAI Nexus is a powerful and flexible Python package for managing AI agents 
 - **Supervisor Class**: Manages multiple agents, coordinates tasks, and handles user interactions.
 - **Debugger Utility**: Integrated debugging capabilities for logging and troubleshooting.
 - **Flexible Configuration**: Easy-to-use configuration options for language models and agents.
+- **Flexible LLM Parameters**: Direct control over all language model parameters through configuration.
 - **Interactive Sessions**: Built-in support for interactive chat sessions with the AI system.
 - **YAML Configuration**: Define complex agent hierarchies using YAML files for easy setup and modification.
 

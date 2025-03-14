@@ -60,20 +60,20 @@ class AI:
             raise ValueError("Tools must be provided when use_tools is True")
 
         try:
-            params = {
-                "model": self.llm_config['model'],
-                "messages": messages,
-                "temperature": float(self.llm_config.get('temperature', 0.7))
-            }
-
+            params = self.llm_config.copy()
+            
+            params.pop('api_key', None)
+            params.pop('base_url', None)
+            
+            params['messages'] = messages
+            
             if use_tools:
-                params["tools"] = tools
-                params["tool_choice"] = "auto"
+                params['tools'] = tools
+                params['tool_choice'] = 'auto'
 
             return self.client.chat.completions.create(**params)
 
         except openai.OpenAIError as e:
-            # Log the error or handle it as appropriate for your application
             raise openai.OpenAIError(f"Chat completion failed: {str(e)}")
 
     def __str__(self) -> str:
