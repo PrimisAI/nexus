@@ -115,29 +115,44 @@ class Agent(AI):
         self.chat_history.append(message)
         function_call = message.tool_calls[0]
         target_tool_name = function_call.function.name
-
+        
+        self.debugger.log(f"Initiating tool call: {target_tool_name}")
+        
         try:
             tool_arguments = json.loads(function_call.function.arguments)
+            self.debugger.log(f"Tool arguments: {json.dumps(tool_arguments, indent=2)}")
         except json.JSONDecodeError:
-            raise ValueError(f"Invalid JSON in function arguments: {function_call.function.arguments}")
+            error_msg = f"Invalid JSON in function arguments: {function_call.function.arguments}"
+            self.debugger.log(error_msg, level="error")
+            raise ValueError(error_msg)
 
         target_tool = next((tool for tool in self.tools if tool['metadata']['function']['name'] == target_tool_name), None)
 
         if not target_tool:
-            raise ValueError(f"Tool '{target_tool_name}' not found")
+            error_msg = f"Tool '{target_tool_name}' not found"
+            self.debugger.log(error_msg, level="error")
+            raise ValueError(error_msg)
 
         tool_function = target_tool['tool']
-
-        if hasattr(tool_function, '__kwdefaults__'):
-            tool_feedback = tool_function(**tool_arguments)
-        else:
-            tool_feedback = tool_function(tool_arguments)
-
-        self.chat_history.append({
-            "role": "tool",
-            "content": str(tool_feedback),
-            "tool_call_id": function_call.id
-        })
+        
+        try:
+            if hasattr(tool_function, '__kwdefaults__'):
+                tool_feedback = tool_function(**tool_arguments)
+            else:
+                tool_feedback = tool_function(tool_arguments)
+            
+            self.debugger.log(f"Tool execution successful")
+            self.debugger.log(f"Tool response: {str(tool_feedback)}")
+            
+            self.chat_history.append({
+                "role": "tool",
+                "content": str(tool_feedback),
+                "tool_call_id": function_call.id
+            })
+        except Exception as e:
+            error_msg = f"Tool execution failed: {str(e)}"
+            self.debugger.log(error_msg, level="error")
+            raise RuntimeError(error_msg) from e
 
     def __str__(self) -> str:
         """Return a string representation of the Agent instance."""

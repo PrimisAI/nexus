@@ -140,12 +140,14 @@ class Supervisor(AI):
         if not agent_instruction:
             raise ValueError("Agent instruction is missing from the function call")
 
-        self.debugger.log(f"Agent: {target_agent_name} | Instruction: {agent_instruction} | Thinking: {thinking_process}")
+        self.debugger.log(f"[DELEGATION] Agent: {target_agent_name}")
+        self.debugger.log(f"[INSTRUCTION] {agent_instruction}")
+        self.debugger.log(f"[REASONING] {thinking_process}")
 
         for agent in self.registered_agents:
             if agent.name.lower() == target_agent_name:
                 agent_response = agent.chat(query=agent_instruction)
-                self.debugger.log(f"{target_agent_name}: {agent_response}")
+                self.debugger.log(f"[RESPONSE] {target_agent_name}: {agent_response}")
                 return agent_response
 
         raise ValueError(f"No agent found with name '{target_agent_name}'")
@@ -163,7 +165,7 @@ class Supervisor(AI):
         Raises:
             RuntimeError: If there's an error in processing the user input.
         """
-        self.debugger.log(f"User: {query}")
+        self.debugger.log(f"[USER INPUT] {query}")
         self.chat_history.append({'role': 'user', 'content': query})
 
         try:
@@ -172,13 +174,11 @@ class Supervisor(AI):
 
                 if not supervisor_response.finish_reason == "tool_calls":
                     query_answer = supervisor_response.message.content
-                    self.debugger.log(f"{self.name}: {query_answer}")
+                    self.debugger.log(f"[SUPERVISOR RESPONSE] {query_answer}")
                     self.chat_history.append({"role": "assistant", "content": query_answer})
                     return query_answer
 
                 self.chat_history.append(supervisor_response.message)
-
-                # Check if tool_calls attribute exists
                 if hasattr(supervisor_response.message, 'tool_calls') and supervisor_response.message.tool_calls:
                     agent_feedback = self.delegate_to_agent(supervisor_response.message)
                     self.chat_history.append({
@@ -187,12 +187,11 @@ class Supervisor(AI):
                         "tool_call_id": supervisor_response.message.tool_calls[0].id
                     })
                 else:
-                    # If no tool_calls, treat it as a direct response
                     return supervisor_response.message.content
 
         except Exception as e:
             error_msg = f"Error in processing user input: {str(e)}"
-            self.debugger.log(error_msg)
+            self.debugger.log(f"[ERROR] {error_msg}", level="error")
             raise RuntimeError(error_msg)
 
     def start_interactive_session(self) -> None:
