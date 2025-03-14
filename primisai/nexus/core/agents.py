@@ -89,7 +89,7 @@ class Agent(AI):
                     use_tools=self.use_tools
                 ).choices[0]
 
-                if response.finish_reason == "stop":
+                if not response.finish_reason == "tool_calls":
                     user_query_answer = response.message.content
                     self.debugger.log(f"{self.name} response: {user_query_answer}")
                     self.chat_history.append({"role": "assistant", "content": user_query_answer})

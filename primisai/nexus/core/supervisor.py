@@ -170,7 +170,7 @@ class Supervisor(AI):
             while True:
                 supervisor_response = self.generate_response(self.chat_history, tools=self.available_tools, use_tools=self.use_agents).choices[0]
 
-                if supervisor_response.finish_reason == "stop":
+                if not supervisor_response.finish_reason == "tool_calls":
                     query_answer = supervisor_response.message.content
                     self.debugger.log(f"{self.name}: {query_answer}")
                     self.chat_history.append({"role": "assistant", "content": query_answer})
