@@ -23,7 +23,8 @@ class Agent(AI):
     def __init__(self, name: str, llm_config: Dict[str, str],
                  tools: Optional[List[Dict[str, Any]]] = None,
                  system_message: Optional[str] = None,
-                 use_tools: bool = False):
+                 use_tools: bool = False,
+                 keep_history: bool = True):
         """
         Initialize the Agent instance.
 
@@ -33,6 +34,7 @@ class Agent(AI):
             tools (Optional[List[Dict[str, Any]]]): List of tools available to the agent.
             system_message (Optional[str]): The initial system message for the agent.
             use_tools (bool): Whether to use tools in interactions.
+            keep_history (bool): Whether to maintain chat history between interactions.
 
         Raises:
             ValueError: If the name is empty or if tools are enabled but not provided.
@@ -49,6 +51,7 @@ class Agent(AI):
         self.tools = tools or []
         self.tools_metadata = [tool['metadata'] for tool in self.tools]
         self.system_message = system_message
+        self.keep_history = keep_history
         self.debugger = Debugger(name=name)
         self.debugger.start_session()
         self.chat_history: List[Dict[str, str]] = []
@@ -63,7 +66,8 @@ class Agent(AI):
         Args:
             message (str): The system message to set.
         """
-        self.chat_history.append({"role": "system", "content": message})
+        self.system_message = message
+        self._reset_chat_history()
 
     def chat(self, query: str) -> str:
         """
@@ -79,6 +83,10 @@ class Agent(AI):
             RuntimeError: If there's an error processing the query or using tools.
         """
         self.debugger.log(f"Query received: {query}")
+        
+        if not self.keep_history:
+            self._reset_chat_history()
+        
         self.chat_history.append({'role': 'user', 'content': query})
 
         while True:
@@ -153,6 +161,13 @@ class Agent(AI):
             error_msg = f"Tool execution failed: {str(e)}"
             self.debugger.log(error_msg, level="error")
             raise RuntimeError(error_msg) from e
+        
+    def _reset_chat_history(self) -> None:
+        """Reset chat history to initial state (system message only)."""
+        if self.system_message:
+            self.chat_history = [{"role": "system", "content": self.system_message}]
+        else:
+            self.chat_history = []
 
     def __str__(self) -> str:
         """Return a string representation of the Agent instance."""
