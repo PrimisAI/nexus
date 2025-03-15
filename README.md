@@ -94,11 +94,14 @@ supervisor:
         api_key: ${LLM_API_KEY}
         base_url: ${LLM_BASE_URL}
       system_message: "You are responsible for creating new tasks."
+      keep_history: true
       tools:
         - name: add_task
           type: function
           python_path: examples.task_management_with_yaml.task_tools.add_task
 ```
+
+The `keep_history` parameter allows you to control whether an agent maintains conversation history between interactions. When set to `False`, the agent treats each query independently, useful for stateless operations. When `True` (default), the agent maintains context from previous interactions.
 
 To use this YAML configuration:
 
