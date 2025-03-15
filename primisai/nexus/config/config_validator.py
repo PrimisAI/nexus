@@ -86,7 +86,10 @@ class ConfigValidator:
         for field in required_fields:
             if field not in agent:
                 raise ConfigValidationError(f"Missing required field '{field}' in agent configuration")
-
+        
+        if 'keep_history' in agent and not isinstance(agent['keep_history'], bool):
+            raise ConfigValidationError("'keep_history' must be a boolean value")
+        
         ConfigValidator._validate_llm_config(agent['llm_config'])
         ConfigValidator._validate_tools(agent.get('tools', []))
 

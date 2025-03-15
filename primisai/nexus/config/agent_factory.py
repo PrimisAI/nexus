@@ -83,7 +83,8 @@ class AgentFactory:
             llm_config=agent_config['llm_config'],
             system_message=agent_config['system_message'],
             tools=tools,
-            use_tools=bool(tools)
+            use_tools=bool(tools),
+            keep_history=agent_config.get('keep_history', True)
         )
 
     @staticmethod
