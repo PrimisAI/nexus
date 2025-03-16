@@ -162,6 +162,15 @@ class Agent(AI):
             self.debugger.log(error_msg, level="error")
             raise RuntimeError(error_msg) from e
         
+    def get_chat_history(self) -> List[Dict[str, str]]:
+        """
+        Get the current chat history.
+
+        Returns:
+            List[Dict[str, str]]: The current chat history.
+        """
+        return self.chat_history
+        
     def _reset_chat_history(self) -> None:
         """Reset chat history to initial state (system message only)."""
         if self.system_message:
