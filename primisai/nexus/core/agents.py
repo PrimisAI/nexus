@@ -102,6 +102,21 @@ class Agent(AI):
                     self.debugger.log(f"{self.name} response: {user_query_answer}")
                     self.chat_history.append({"role": "assistant", "content": user_query_answer})
                     return user_query_answer
+                
+                tool_call = response.message.tool_calls[0]
+                tool_msg = {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        'id': tool_call.id,
+                        'type': 'function',
+                        'function': {
+                            'name': tool_call.function.name,
+                            'arguments': tool_call.function.arguments
+                        }
+                    }]
+                }
+                self.chat_history.append(tool_msg)
 
                 self._process_tool_call(response.message)
 
@@ -120,7 +135,9 @@ class Agent(AI):
         Raises:
             ValueError: If the specified tool is not found or if there's an error in processing arguments.
         """
-        self.chat_history.append(message)
+        if not hasattr(message, 'tool_calls') or not message.tool_calls:
+            raise ValueError("Message does not contain tool calls")
+        
         function_call = message.tool_calls[0]
         target_tool_name = function_call.function.name
         
