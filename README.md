@@ -15,6 +15,7 @@ PrimisAI Nexus is a powerful and flexible Python package for managing AI agents 
 - **AI Base Class**: A foundational class for AI interactions.
 - **Agent Class**: Extends the AI base class with additional features for specialized tasks.
 - **Supervisor Class**: Manages multiple agents, coordinates tasks, and handles user interactions.
+- **Hierarchical Supervision**: Support for main and assistant supervisors enabling complex task hierarchies.
 - **Debugger Utility**: Integrated debugging capabilities for logging and troubleshooting.
 - **Flexible Configuration**: Easy-to-use configuration options for language models and agents.
 - **Flexible LLM Parameters**: Direct control over all language model parameters through configuration.
@@ -150,6 +151,74 @@ tools = [
 
 research_agent = Agent("Researcher", llm_config, tools=tools, system_message="You are a research assistant.", use_tools=True)
 supervisor.register_agent(research_agent)
+```
+
+### Hierarchical Supervisor Structure
+
+PrimisAI Nexus supports a hierarchical supervisor structure with two types of supervisors:
+
+1. Main Supervisor: The root supervisor that manages the overall workflow
+
+2. Assistant Supervisor: Specialized supervisors that handle specific task domains
+
+Here's how to create and use different types of supervisors:
+
+```python
+# Create a main supervisor with a specific workflow ID
+main_supervisor = Supervisor(
+    name="MainSupervisor",
+    llm_config=llm_config,
+    workflow_id="custom_workflow_123"
+)
+
+# Create an assistant supervisor
+assistant_supervisor = Supervisor(
+    name="AnalysisManager",
+    llm_config=llm_config,
+    is_assistant=True,
+    system_message="You manage data analysis tasks."
+)
+
+# Create agents
+data_agent = Agent("DataAnalyst", llm_config, system_message="You analyze data.")
+viz_agent = Agent("Visualizer", llm_config, system_message="You create visualizations.")
+
+# Register assistant supervisor with main supervisor
+main_supervisor.register_agent(assistant_supervisor)
+
+# Register agents with assistant supervisor
+assistant_supervisor.register_agent(data_agent)
+assistant_supervisor.register_agent(viz_agent)
+
+# Display the complete hierarchy
+main_supervisor.display_agent_graph()
+```
+
+The above code creates a hierarchical structure where:
+- Main Supervisor manages the overall workflow
+- Assistant Supervisor handles specialized tasks
+- Agents perform specific operations
+
+The `display_agent_graph()` output will show:
+
+```
+Main Supervisor: MainSupervisor
+│
+└── Assistant Supervisor: AnalysisManager
+    │
+    ├── Agent: DataAnalyst
+    │   └── No tools available
+    │
+    └── Agent: Visualizer
+        └── No tools available
+```
+
+Each workflow is automatically assigned a unique ID and maintains its conversation history in a dedicated directory structure:
+
+```
+nexus_workflows/
+└── workflow_123/
+    └── history.jsonl
 ```
 
 ## Citation
