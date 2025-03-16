@@ -5,7 +5,8 @@ This module provides a Supervisor class that coordinates interactions between
 users and multiple specialized AI agents.
 """
 
-import json
+import json, uuid
+from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
 from openai.types.chat import ChatCompletionMessage
 from primisai.nexus.core import AI
@@ -19,20 +20,32 @@ class Supervisor(AI):
 
     This class handles user queries, delegates tasks to appropriate agents,
     and coordinates complex multi-step processes.
+    
+    The Supervisor can operate in two modes:
+    1. Main Supervisor: Creates and manages the workflow directory
+    2. Assistant Supervisor: Works within an existing workflow
     """
 
-    def __init__(self, name: str, llm_config: Dict[str, str], system_message: Optional[str] = None, use_agents: bool=True):
+    def __init__(self, 
+                 name: str, 
+                 llm_config: Dict[str, str], 
+                 workflow_id: Optional[str] = None,
+                 is_assistant: bool = False,
+                 system_message: Optional[str] = None, 
+                 use_agents: bool = True):
         """
         Initialize the Supervisor instance.
 
         Args:
             name (str): The name of the supervisor.
             llm_config (Dict[str, str]): Configuration for the language model.
+            workflow_id (Optional[str]): ID for the workflow. Only used by main supervisor.
+            is_assistant (bool): Whether this is an assistant supervisor.
             system_message (Optional[str]): The initial system message for the agent.
             use_agents (bool): Whether to use agents or not.
 
         Raises:
-            ValueError: If the name is empty.
+            ValueError: If the name is empty or if workflow management rules are violated.
         """
         super().__init__(llm_config=llm_config)
 
@@ -40,8 +53,14 @@ class Supervisor(AI):
             raise ValueError("Supervisor name cannot be empty")
 
         self.name = name
+        self.is_assistant = is_assistant
+        self.workflow_id = workflow_id
+        
+        if not is_assistant:
+            self._initialize_workflow()
+        
         self.system_message = system_message if system_message is not None else self._get_default_system_message()
-        self.registered_agents: List[Agent] = []
+        self.registered_agents: List[Union[Agent, 'Supervisor']] = []
         self.available_tools: List[Dict[str, Any]] = []
         self.use_agents = use_agents
         self.chat_history: List[Dict[str, str]] = [{'role': 'system', 'content': self.system_message}]
@@ -49,13 +68,20 @@ class Supervisor(AI):
         self.debugger.start_session()
 
     @staticmethod
-    def _get_default_system_message() -> str:
-        """Return the default system message for the Supervisor."""
-        return """You are a highly capable user assistant and the Supervisor of multiple specialized agents. Your primary responsibilities include:
-1. Understanding user queries and determining which agent(s) can best address them.
-2. Carefully planning the sequence of agent calls to ensure relevance.
-3. Passing outputs from one agent as inputs to another when necessary.
-4. Calling agents sequentially to execute complex tasks in a coordinated manner."""
+    def _get_default_system_message(self) -> str:
+        """
+        Get the default system message based on supervisor type.
+
+        Returns:
+            str: Appropriate system message for the supervisor type.
+        """
+        if self.is_assistant:
+            return """You are an Assistant Supervisor, part of a larger workflow managed by the Main Supervisor. 
+            Your role is to handle specialized tasks delegated to you and manage your assigned agents effectively."""
+        else:
+            return """You are the Main Supervisor, responsible for managing the entire workflow. 
+            Your tasks include coordinating with Assistant Supervisors and direct agents, ensuring efficient task delegation 
+            and execution."""
 
     def configure_system_prompt(self, system_prompt: str) -> None:
         """
@@ -66,13 +92,21 @@ class Supervisor(AI):
         """
         self.system_message = {"role": "system", "content": system_prompt}
 
-    def register_agent(self, agent: Union['Agent', 'Supervisor']) -> None:
+    def register_agent(self, agent: Union[Agent, 'Supervisor']) -> None:
         """
-        Register a new agent with the Supervisor.
+        Register a new agent or assistant supervisor.
 
         Args:
-            agent (Union[Agent, Supervisor]): The agent or supervisor to register.
+            agent (Union[Agent, Supervisor]): The agent or assistant supervisor to register.
+
+        Raises:
+            ValueError: If attempting to register a main supervisor or if registration rules are violated.
         """
+        if isinstance(agent, Supervisor):
+            if not agent.is_assistant:
+                raise ValueError("Only assistant supervisors can be registered as agents")
+            agent.workflow_id = self.workflow_id
+        
         self.registered_agents.append(agent)
         self._add_agent_tool(agent)
         # self.system_message += f"{agent.name}: {agent.system_message}\n"
@@ -105,6 +139,27 @@ class Supervisor(AI):
                 }
             }
         })
+        
+    def _initialize_workflow(self) -> None:
+        """
+        Initialize the workflow directory and set up necessary structures.
+        Only called by main supervisor.
+
+        Raises:
+            ValueError: If an assistant supervisor attempts to initialize a workflow.
+        """
+        if self.is_assistant:
+            raise ValueError("Assistant supervisors cannot initialize workflows")
+        
+        if not self.workflow_id:
+            self.workflow_id = str(uuid.uuid4())
+        
+        workflow_path = Path("nexus_workflows") / self.workflow_id
+        workflow_path.mkdir(parents=True, exist_ok=True)
+        
+        history_file = workflow_path / "history.jsonl"
+        if not history_file.exists():
+            history_file.touch()
 
     def get_registered_agents(self) -> List[str]:
         """
@@ -300,21 +355,52 @@ class Supervisor(AI):
         agent_descriptions = "\n".join(f"{agent.name}: {agent.system_message}" for agent in self.registered_agents)
         self.system_message = f"{self._get_default_system_message()}\n\n{agent_descriptions}"
         self.reset_chat_history()
+        
+    @property
+    def is_main_supervisor(self) -> bool:
+        """
+        Check if this is the main supervisor.
 
-    def display_agent_graph(self, indent=""):
+        Returns:
+            bool: True if this is the main supervisor, False if assistant.
         """
-        Display a simple ASCII graph in the terminal showing the Supervisor,
-        connected agents, sub-supervisors, and their available tools.
+        return not self.is_assistant
+    
+    def get_workflow_info(self) -> Dict[str, Any]:
         """
-        print(f"{indent}Supervisor: {self.name}")
+        Get information about the current workflow.
+
+        Returns:
+            Dict[str, Any]: Dictionary containing workflow information.
+        """
+        return {
+            'workflow_id': self.workflow_id,
+            'supervisor_type': 'main' if self.is_main_supervisor else 'assistant',
+            'name': self.name,
+            'registered_agents': [
+                {
+                    'name': agent.name,
+                    'type': 'supervisor' if isinstance(agent, Supervisor) else 'agent'
+                }
+                for agent in self.registered_agents
+            ]
+        }
+
+    def display_agent_graph(self, indent="") -> None:
+        """
+        Display the supervisor-agent hierarchy.
+        Modified to show supervisor types.
+        """
+        supervisor_type = "Main Supervisor" if self.is_main_supervisor else "Assistant Supervisor"
+        print(f"{indent}{supervisor_type}: {self.name}")
         print(f"{indent}│")
-
+        
         for i, agent in enumerate(self.registered_agents):
             is_last_agent = i == len(self.registered_agents) - 1
             agent_prefix = "└── " if is_last_agent else "├── "
-
+            
             if isinstance(agent, Supervisor):
-                print(f"{indent}{agent_prefix}Sub-Supervisor: {agent.name}")
+                print(f"{indent}{agent_prefix}Assistant Supervisor: {agent.name}")
                 agent.display_agent_graph(indent + ("    " if is_last_agent else "│   "))
             else:
                 print(f"{indent}{agent_prefix}Agent: {agent.name}")

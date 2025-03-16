@@ -24,7 +24,8 @@ def test_hierarchical_structure():
     sub_supervisor = Supervisor(
         name="SubSupervisor", 
         system_message="You are a sub-supervisor managing Agent2 and Agent3.",
-        llm_config=llm_config)
+        llm_config=llm_config,
+        is_assistant=True)
     sub_supervisor.register_agent(agent2)
     sub_supervisor.register_agent(agent3)
 
