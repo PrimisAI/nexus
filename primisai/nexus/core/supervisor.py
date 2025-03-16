@@ -178,7 +178,20 @@ class Supervisor(AI):
                     self.chat_history.append({"role": "assistant", "content": query_answer})
                     return query_answer
 
-                self.chat_history.append(supervisor_response.message)
+                tool_call = supervisor_response.message.tool_calls[0]
+                self.chat_history.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                                'id': tool_call.id,
+                                'type': 'function',
+                                'function': {
+                                    'name': tool_call.function.name,
+                                    'arguments': tool_call.function.arguments
+                                }
+                            }]
+                })
+                
                 if hasattr(supervisor_response.message, 'tool_calls') and supervisor_response.message.tool_calls:
                     agent_feedback = self.delegate_to_agent(supervisor_response.message)
                     self.chat_history.append({
