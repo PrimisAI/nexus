@@ -67,7 +67,6 @@ class Supervisor(AI):
         self.debugger = Debugger(name=self.name)
         self.debugger.start_session()
 
-    @staticmethod
     def _get_default_system_message(self) -> str:
         """
         Get the default system message based on supervisor type.
@@ -386,34 +385,39 @@ class Supervisor(AI):
             ]
         }
 
-    def display_agent_graph(self, indent="") -> None:
+    def display_agent_graph(self, indent="", skip_header=False) -> None:
         """
         Display the supervisor-agent hierarchy.
-        Modified to show supervisor types.
+        
+        Args:
+            indent (str): Current indentation level
+            skip_header (bool): Whether to skip printing the supervisor header
         """
-        supervisor_type = "Main Supervisor" if self.is_main_supervisor else "Assistant Supervisor"
-        print(f"{indent}{supervisor_type}: {self.name}")
-        print(f"{indent}│")
+        if not skip_header:
+            supervisor_type = "Main Supervisor" if self.is_main_supervisor else "Assistant Supervisor"
+            print(f"{indent}{supervisor_type}: {self.name}")
+            
+            if self.registered_agents:
+                print(f"{indent}│")
         
         for i, agent in enumerate(self.registered_agents):
             is_last_agent = i == len(self.registered_agents) - 1
             agent_prefix = "└── " if is_last_agent else "├── "
+            current_indent = indent + ("    " if is_last_agent else "│   ")
             
             if isinstance(agent, Supervisor):
                 print(f"{indent}{agent_prefix}Assistant Supervisor: {agent.name}")
-                agent.display_agent_graph(indent + ("    " if is_last_agent else "│   "))
+                agent.display_agent_graph(current_indent, skip_header=True)  # Skip header for recursive calls
             else:
                 print(f"{indent}{agent_prefix}Agent: {agent.name}")
-
                 if hasattr(agent, 'tools') and agent.tools:
-                    tool_indent = indent + ("    " if is_last_agent else "│   ")
                     for j, tool in enumerate(agent.tools):
                         is_last_tool = j == len(agent.tools) - 1
                         tool_prefix = "└── " if is_last_tool else "├── "
                         tool_name = tool['metadata']['function']['name'] if 'metadata' in tool else "Unnamed Tool"
-                        print(f"{tool_indent}{tool_prefix}Tool: {tool_name}")
+                        print(f"{current_indent}{tool_prefix}Tool: {tool_name}")
                 else:
-                    print(f"{indent}{'    ' if is_last_agent else '│   '}└── No tools available")
-
-            if not is_last_agent:
+                    print(f"{current_indent}└── No tools available")
+            
+            if not is_last_agent and i < len(self.registered_agents) - 1:
                 print(f"{indent}│")
