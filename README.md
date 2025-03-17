@@ -16,6 +16,8 @@ PrimisAI Nexus is a powerful and flexible Python package for managing AI agents 
 - **Agent Class**: Extends the AI base class with additional features for specialized tasks.
 - **Supervisor Class**: Manages multiple agents, coordinates tasks, and handles user interactions.
 - **Hierarchical Supervision**: Support for main and assistant supervisors enabling complex task hierarchies.
+- **Persistent History**: Built-in conversation history management with JSONL storage.
+- **Integrated Logging**: Organized logging system within workflow structure.
 - **Debugger Utility**: Integrated debugging capabilities for logging and troubleshooting.
 - **Flexible Configuration**: Easy-to-use configuration options for language models and agents.
 - **Flexible LLM Parameters**: Direct control over all language model parameters through configuration.
@@ -133,6 +135,21 @@ For a more detailed example of YAML configuration, check out the [task managemen
 
 For detailed documentation on each module and class, please refer to the inline docstrings in the source code.
 
+## History and Logging
+PrimisAI Nexus provides comprehensive history management and logging capabilities organized within workflow directories:
+
+```bash
+nexus_workflows/
+├── workflow_123/              # Workflow specific directory
+│   ├── history.jsonl         # Conversation history
+│   └── logs/                 # Workflow logs
+│       ├── MainSupervisor.log
+│       ├── AssistantSupervisor.log
+│       └── Agent1.log
+└── standalone_logs/          # Logs for agents not in workflows
+    └── StandaloneAgent.log
+```
+
 ## Advanced Usage
 
 PrimisAI Nexus allows for complex interactions between multiple agents. You can create specialized agents for different tasks, register them with a supervisor, and let the supervisor manage the flow of information and task delegation.
@@ -216,10 +233,16 @@ Main Supervisor: MainSupervisor
 Each workflow is automatically assigned a unique ID and maintains its conversation history in a dedicated directory structure:
 
 ```
-nexus_workflows/
-└── workflow_123/
-    └── history.jsonl
+custom_workflow_123/
+├── history.jsonl
+└── logs
+    ├── AnalysisManager.log
+    ├── DataAnalyst.log
+    ├── MainSupervisor.log
+    └── Visualizer.log
 ```
+
+All interactions, delegations, and tool usage are automatically logged and stored in the workflow directory, providing complete visibility into the decision-making process and execution flow.
 
 ## Citation
 If you find Nexus useful, please consider citing our preprint.
