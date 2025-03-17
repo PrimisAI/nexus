@@ -12,7 +12,7 @@ from openai.types.chat import ChatCompletionMessage
 from primisai.nexus.core import AI
 from primisai.nexus.core import Agent
 from primisai.nexus.history import HistoryManager, EntityType
-from primisai.nexus.utils.debugger import Debugger
+from primisai.nexus.utils import Debugger
 
 
 class Supervisor(AI):
@@ -73,7 +73,7 @@ class Supervisor(AI):
         self.chat_history: List[Dict[str, str]] = []
         self._initialize_chat_history()
         
-        self.debugger = Debugger(name=self.name)
+        self.debugger = Debugger(name=self.name, workflow_id=self.workflow_id)
         self.debugger.start_session()
 
     def _get_default_system_message(self) -> str:
@@ -132,16 +132,26 @@ class Supervisor(AI):
             return
         
         if isinstance(agent, Supervisor):
-            agent.workflow_id = self.workflow_id
-            agent.history_manager = HistoryManager(self.workflow_id)
-            agent._initialize_chat_history()
-            agent._process_pending_registrations()
+            agent.set_workflow_id(self.workflow_id)
         else:
             agent.set_workflow_id(self.workflow_id)
         
         self.registered_agents.append(agent)
         self._add_agent_tool(agent)
         # self.system_message += f"{agent.name}: {agent.system_message}\n"
+    
+    def set_workflow_id(self, workflow_id: str) -> None:
+        """
+        Set the workflow ID for this supervisor.
+        
+        Args:
+            workflow_id (str): The workflow ID to set.
+        """
+        self.workflow_id = workflow_id
+        self.debugger.update_workflow_id(workflow_id)
+        self.history_manager = HistoryManager(workflow_id)
+        self._initialize_chat_history()
+        self._process_pending_registrations()
         
     def _process_pending_registrations(self) -> None:
         """Process any pending agent registrations."""

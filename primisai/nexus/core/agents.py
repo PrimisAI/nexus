@@ -10,7 +10,7 @@ from typing import List, Dict, Optional, Any
 from openai.types.chat import ChatCompletionMessage
 from primisai.nexus.core.ai import AI
 from primisai.nexus.history import HistoryManager, EntityType
-from primisai.nexus.utils.debugger import Debugger
+from primisai.nexus.utils import Debugger
 
 
 class Agent(AI):
@@ -60,7 +60,7 @@ class Agent(AI):
         self.system_message = system_message
         self.keep_history = keep_history
         self.history_manager = None
-        self.debugger = Debugger(name=name)
+        self.debugger = Debugger(name=self.name, workflow_id=None)
         self.debugger.start_session()
         self.chat_history: List[Dict[str, str]] = []
 
@@ -76,6 +76,7 @@ class Agent(AI):
             workflow_id (str): The workflow ID to set.
         """
         self.workflow_id = workflow_id
+        self.debugger.update_workflow_id(workflow_id)
         self.history_manager = HistoryManager(workflow_id)
         
         if self.system_message:
