@@ -11,6 +11,7 @@ from typing import List, Dict, Any, Optional, Union
 from openai.types.chat import ChatCompletionMessage
 from primisai.nexus.core import AI
 from primisai.nexus.core import Agent
+from primisai.nexus.history import HistoryManager, EntityType
 from primisai.nexus.utils.debugger import Debugger
 
 
@@ -56,14 +57,22 @@ class Supervisor(AI):
         self.is_assistant = is_assistant
         self.workflow_id = workflow_id
         
+        self._pending_registrations: List[Union[Agent, 'Supervisor']] = []
+        
         if not is_assistant:
             self._initialize_workflow()
+            self.history_manager = HistoryManager(self.workflow_id)
+        else:
+            self.history_manager = None
         
         self.system_message = system_message if system_message is not None else self._get_default_system_message()
         self.registered_agents: List[Union[Agent, 'Supervisor']] = []
         self.available_tools: List[Dict[str, Any]] = []
         self.use_agents = use_agents
-        self.chat_history: List[Dict[str, str]] = [{'role': 'system', 'content': self.system_message}]
+        
+        self.chat_history: List[Dict[str, str]] = []
+        self._initialize_chat_history()
+        
         self.debugger = Debugger(name=self.name)
         self.debugger.start_session()
 
@@ -81,6 +90,19 @@ class Supervisor(AI):
             return """You are the Main Supervisor, responsible for managing the entire workflow. 
             Your tasks include coordinating with Assistant Supervisors and direct agents, ensuring efficient task delegation 
             and execution."""
+
+    def _initialize_chat_history(self) -> None:
+        """Initialize chat history with system message and record in history manager."""
+        system_msg = {'role': 'system', 'content': self.system_message}
+        self.chat_history = [system_msg]
+        
+        if self.history_manager:
+            self.history_manager.append_message(
+                message=system_msg,
+                sender_type=EntityType.MAIN_SUPERVISOR if not self.is_assistant 
+                        else EntityType.ASSISTANT_SUPERVISOR,
+                sender_name=self.name
+            )
 
     def configure_system_prompt(self, system_prompt: str) -> None:
         """
@@ -101,14 +123,32 @@ class Supervisor(AI):
         Raises:
             ValueError: If attempting to register a main supervisor or if registration rules are violated.
         """
+        
+        if isinstance(agent, Supervisor) and not agent.is_assistant:
+            raise ValueError("Only assistant supervisors can be registered as agents")
+
+        if self.is_assistant and not self.workflow_id:
+            self._pending_registrations.append(agent)
+            return
+        
         if isinstance(agent, Supervisor):
-            if not agent.is_assistant:
-                raise ValueError("Only assistant supervisors can be registered as agents")
             agent.workflow_id = self.workflow_id
+            agent.history_manager = HistoryManager(self.workflow_id)
+            agent._initialize_chat_history()
+            agent._process_pending_registrations()
+        else:
+            agent.set_workflow_id(self.workflow_id)
         
         self.registered_agents.append(agent)
         self._add_agent_tool(agent)
         # self.system_message += f"{agent.name}: {agent.system_message}\n"
+        
+    def _process_pending_registrations(self) -> None:
+        """Process any pending agent registrations."""
+        if self._pending_registrations:
+            for agent in self._pending_registrations:
+                self.register_agent(agent)
+            self._pending_registrations.clear()
 
     def _add_agent_tool(self, agent: Agent) -> None:
         """
@@ -169,12 +209,17 @@ class Supervisor(AI):
         """
         return [agent.name for agent in self.registered_agents]
 
-    def delegate_to_agent(self, message: ChatCompletionMessage) -> str:
+    def delegate_to_agent(self, 
+                          message: ChatCompletionMessage,
+                          parent_msg_id: str,
+                          supervisor_chain: Optional[List[str]] = None) -> str:
         """
         Delegate a task to the appropriate agent based on the supervisor's response.
 
         Args:
             message (ChatCompletionMessage): The message containing the delegation information.
+            parent_msg_id (str): ID of the parent message in history.
+            supervisor_chain (Optional[List[str]]): Chain of supervisors involved in delegation.
 
         Returns:
             str: The response from the delegated agent.
@@ -197,21 +242,32 @@ class Supervisor(AI):
         self.debugger.log(f"[DELEGATION] Agent: {target_agent_name}")
         self.debugger.log(f"[INSTRUCTION] {agent_instruction}")
         self.debugger.log(f"[REASONING] {thinking_process}")
+        
+        current_chain = supervisor_chain or []
+        current_chain.append(self.name)
 
         for agent in self.registered_agents:
             if agent.name.lower() == target_agent_name:
-                agent_response = agent.chat(query=agent_instruction)
+                agent_response = agent.chat(
+                    query=agent_instruction,
+                    sender_name=self.name
+                )
                 self.debugger.log(f"[RESPONSE] {target_agent_name}: {agent_response}")
                 return agent_response
 
         raise ValueError(f"No agent found with name '{target_agent_name}'")
 
-    def chat(self, query: str) -> str:
+    def chat(self, 
+             query: str,
+             sender_name: Optional[str] = None,
+             supervisor_chain: Optional[List[str]] = None) -> str:
         """
         Process user input and generate a response using the appropriate agents.
 
         Args:
             query (str): The user's input query.
+            sender_name (Optional[str]): Name of the sender (for assistant supervisors).
+            supervisor_chain (Optional[List[str]]): Chain of supervisors in delegation.
 
         Returns:
             str: The final response to the user's query.
@@ -220,7 +276,20 @@ class Supervisor(AI):
             RuntimeError: If there's an error in processing the user input.
         """
         self.debugger.log(f"[USER INPUT] {query}")
-        self.chat_history.append({'role': 'user', 'content': query})
+        
+        current_chain = supervisor_chain or []
+        if self.name not in current_chain:
+            current_chain.append(self.name)
+        
+        user_msg = {'role': 'user', 'content': query}
+        self.chat_history.append(user_msg)
+
+        user_msg_id = self.history_manager.append_message(
+            message=user_msg,
+            sender_type=EntityType.MAIN_SUPERVISOR if sender_name else EntityType.USER,
+            sender_name=sender_name or "user",
+            supervisor_chain=current_chain
+        )
 
         try:
             while True:
@@ -229,30 +298,67 @@ class Supervisor(AI):
                 if not supervisor_response.finish_reason == "tool_calls":
                     query_answer = supervisor_response.message.content
                     self.debugger.log(f"[SUPERVISOR RESPONSE] {query_answer}")
-                    self.chat_history.append({"role": "assistant", "content": query_answer})
+                    
+                    response_msg = {"role": "assistant", "content": query_answer}
+                    self.chat_history.append(response_msg)
+                    
+                    self.history_manager.append_message(
+                        message=response_msg,
+                        sender_type=EntityType.MAIN_SUPERVISOR if not self.is_assistant 
+                                    else EntityType.ASSISTANT_SUPERVISOR,
+                        sender_name=self.name,
+                        parent_id=user_msg_id,
+                        supervisor_chain=current_chain
+                    )
+                    
                     return query_answer
 
                 tool_call = supervisor_response.message.tool_calls[0]
-                self.chat_history.append({
+                tool_msg = {
                     "role": "assistant",
                     "content": None,
                     "tool_calls": [{
-                                'id': tool_call.id,
-                                'type': 'function',
-                                'function': {
-                                    'name': tool_call.function.name,
-                                    'arguments': tool_call.function.arguments
-                                }
-                            }]
-                })
+                        'id': tool_call.id,
+                        'type': 'function',
+                        'function': {
+                            'name': tool_call.function.name,
+                            'arguments': tool_call.function.arguments
+                        }
+                    }]
+                }
+                self.chat_history.append(tool_msg)
+                
+                tool_msg_id = self.history_manager.append_message(
+                    message=tool_msg,
+                    sender_type=EntityType.MAIN_SUPERVISOR if not self.is_assistant 
+                                else EntityType.ASSISTANT_SUPERVISOR,
+                    sender_name=self.name,
+                    parent_id=user_msg_id,
+                    tool_call_id=tool_call.id,
+                    supervisor_chain=current_chain
+                )
                 
                 if hasattr(supervisor_response.message, 'tool_calls') and supervisor_response.message.tool_calls:
-                    agent_feedback = self.delegate_to_agent(supervisor_response.message)
-                    self.chat_history.append({
+                    agent_feedback = self.delegate_to_agent(
+                    supervisor_response.message,
+                    tool_msg_id,
+                    supervisor_chain=current_chain
+                )
+                    feedback_msg = {
                         "role": "tool",
                         "content": agent_feedback,
-                        "tool_call_id": supervisor_response.message.tool_calls[0].id
-                    })
+                        "tool_call_id": tool_call.id
+                    }
+                    self.chat_history.append(feedback_msg)
+                    
+                    self.history_manager.append_message(
+                        message=feedback_msg,
+                        sender_type=EntityType.TOOL,
+                        sender_name=self.name,
+                        parent_id=tool_msg_id,
+                        tool_call_id=tool_call.id,
+                        supervisor_chain=current_chain
+                    )
                 else:
                     return supervisor_response.message.content
 
@@ -290,8 +396,9 @@ class Supervisor(AI):
                 f"registered_agents={[agent.name for agent in self.registered_agents]})")
 
     def reset_chat_history(self) -> None:
-        """Reset the chat history to its initial state with only the system message."""
-        self.chat_history = [{'role': 'system', 'content': self.system_message}]
+        """Reset chat history to initial state and clear history manager."""
+        self.history_manager.clear_history()
+        self._initialize_chat_history()
 
     def get_chat_history(self) -> List[Dict[str, str]]:
         """
@@ -304,7 +411,7 @@ class Supervisor(AI):
 
     def add_to_chat_history(self, role: str, content: str) -> None:
         """
-        Add a new message to the chat history.
+        Add a new message to both chat history and history manager.
 
         Args:
             role (str): The role of the message sender (e.g., 'user', 'assistant', 'system').
@@ -315,7 +422,24 @@ class Supervisor(AI):
         """
         if role not in ['user', 'assistant', 'system', 'tool']:
             raise ValueError(f"Invalid role: {role}")
-        self.chat_history.append({"role": role, "content": content})
+        
+        message = {"role": role, "content": content}
+        self.chat_history.append(message)
+        
+        sender_type = {
+            'user': EntityType.USER,
+            'assistant': EntityType.MAIN_SUPERVISOR if not self.is_assistant 
+                        else EntityType.ASSISTANT_SUPERVISOR,
+            'system': EntityType.MAIN_SUPERVISOR if not self.is_assistant 
+                     else EntityType.ASSISTANT_SUPERVISOR,
+            'tool': EntityType.TOOL
+        }[role]
+        
+        self.history_manager.append_message(
+            message=message,
+            sender_type=sender_type,
+            sender_name=self.name
+        )
 
     def get_agent_by_name(self, agent_name: str) -> Optional[Agent]:
         """
