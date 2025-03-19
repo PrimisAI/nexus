@@ -1,11 +1,24 @@
 # CHANGELOG
 
 
+## v0.5.0 (2025-03-19)
+
+### Features
+
+* feat: workflow management & enhanced framework architecture (#21)
+
+Co-authored-by: Valerio Tenace <valerio.tenace@gmail.com> ([`2cd2784`](https://github.com/PrimisAI/nexus/commit/2cd2784908195554d2ff3830a2f49a18027ee712))
+
+
 ## v0.4.1 (2025-03-07)
 
 ### Bug Fixes
 
 * fix: logs filenames compatible with `windows` os (#18) ([`2a98d3e`](https://github.com/PrimisAI/nexus/commit/2a98d3eddbd941df878ecc74ca5cb57bc457af91))
+
+### Chores
+
+* chore(release): 🚀 bump version to 0.4.1 ([`135e3c1`](https://github.com/PrimisAI/nexus/commit/135e3c1f7480bf7005b1062eaf2e42f3bdbeb572))
 
 
 ## v0.4.0 (2025-01-19)
