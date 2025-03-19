@@ -6,8 +6,8 @@ Supervisors and Agents based on a configuration dictionary, typically loaded
 from a YAML file.
 """
 
-import importlib
-from typing import Dict, Any, List
+import importlib, uuid
+from typing import Dict, Any, List, Optional
 from primisai.nexus.core import Supervisor, Agent
 from .config_validator import ConfigValidator
 
@@ -37,16 +37,27 @@ class AgentFactory:
             ConfigValidationError: If the configuration is invalid.
         """
         ConfigValidator.validate(config)
-        return AgentFactory._create_supervisor(config['supervisor'], is_root=True)
-
+        # Generate workflow_id if not provided
+        workflow_id = config.get('workflow_id', str(uuid.uuid4()))
+        return AgentFactory._create_supervisor(
+            config['supervisor'], 
+            is_root=True, 
+            workflow_id=workflow_id
+        )
+    
     @staticmethod
-    def _create_supervisor(supervisor_config: Dict[str, Any], is_root: bool = False) -> Supervisor:
+    def _create_supervisor(
+        supervisor_config: Dict[str, Any], 
+        is_root: bool = False,
+        workflow_id: Optional[str] = None
+    ) -> Supervisor:
         """
         Create a Supervisor instance and its children from a configuration dictionary.
 
         Args:
             supervisor_config (Dict[str, Any]): The configuration for this Supervisor.
             is_root (bool): Whether this Supervisor is the root of the hierarchy.
+            workflow_id (Optional[str]): ID of the workflow (only for root supervisor).
 
         Returns:
             Supervisor: The created Supervisor instance with all its children.
@@ -54,12 +65,18 @@ class AgentFactory:
         supervisor = Supervisor(
             name=supervisor_config['name'],
             llm_config=supervisor_config['llm_config'],
-            system_message=supervisor_config['system_message']
+            system_message=supervisor_config['system_message'],
+            workflow_id=workflow_id if is_root else None,
+            is_assistant=supervisor_config.get('is_assistant', False)
         )
 
         for child_config in supervisor_config.get('children', []):
             if child_config['type'] == 'supervisor':
-                child = AgentFactory._create_supervisor(child_config)
+                child = AgentFactory._create_supervisor(
+                    child_config,
+                    is_root=False,
+                    workflow_id=None  # Assistant supervisors get workflow_id during registration
+                )
             else:  # agent
                 child = AgentFactory._create_agent(child_config)
             supervisor.register_agent(child)
@@ -83,7 +100,8 @@ class AgentFactory:
             llm_config=agent_config['llm_config'],
             system_message=agent_config['system_message'],
             tools=tools,
-            use_tools=bool(tools)
+            use_tools=bool(tools),
+            keep_history=agent_config.get('keep_history', True)
         )
 
     @staticmethod

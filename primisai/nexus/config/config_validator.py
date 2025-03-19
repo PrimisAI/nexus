@@ -60,11 +60,19 @@ class ConfigValidator:
 
         if supervisor['type'] != 'supervisor':
             raise ConfigValidationError(f"Invalid type for supervisor: {supervisor['type']}")
+        
+        if 'is_assistant' in supervisor and not isinstance(supervisor['is_assistant'], bool):
+            raise ConfigValidationError("'is_assistant' must be a boolean value")
+
+        if is_root and supervisor.get('is_assistant', False):
+            raise ConfigValidationError("Root supervisor cannot be an assistant supervisor")
 
         ConfigValidator._validate_llm_config(supervisor['llm_config'])
 
         for child in supervisor.get('children', []):
             if child['type'] == 'supervisor':
+                if not child.get('is_assistant', False):
+                    raise ConfigValidationError("Child supervisors must be assistant supervisors")
                 ConfigValidator._validate_supervisor(child)
             elif child['type'] == 'agent':
                 ConfigValidator._validate_agent(child)
@@ -86,7 +94,10 @@ class ConfigValidator:
         for field in required_fields:
             if field not in agent:
                 raise ConfigValidationError(f"Missing required field '{field}' in agent configuration")
-
+        
+        if 'keep_history' in agent and not isinstance(agent['keep_history'], bool):
+            raise ConfigValidationError("'keep_history' must be a boolean value")
+        
         ConfigValidator._validate_llm_config(agent['llm_config'])
         ConfigValidator._validate_tools(agent.get('tools', []))
 

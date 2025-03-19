@@ -1,0 +1,51 @@
+supervisor:
+  name: ContextTaskManager
+  type: supervisor
+  llm_config:
+    model: ${LLM_MODEL}
+    api_key: ${LLM_API_KEY}
+    base_url: ${LLM_BASE_URL}
+  system_message: "You are the context-aware task management supervisor. Coordinate between agents to manage tasks in different contexts."
+  children:
+    - name: StatefulTaskManager
+      type: agent
+      llm_config:
+        model: ${LLM_MODEL}
+        api_key: ${LLM_API_KEY}
+        base_url: ${LLM_BASE_URL}
+      system_message: "You are a stateful task manager that remembers context from previous interactions."
+      keep_history: true
+      tools:
+        - name: add_task_with_context
+          type: function
+          python_path: examples.memory_task_management.task_tools.add_task_with_context
+          description: "Add a task with context information"
+          parameters:
+            task:
+              type: string
+              description: "The task to be added"
+            context:
+              type: string
+              description: "The context/category for the task"
+        - name: list_context_tasks
+          type: function
+          python_path: examples.memory_task_management.task_tools.list_context_tasks
+          description: "List tasks in a specific context"
+          parameters:
+            context:
+              type: string
+              description: "The context to list tasks from"
+
+    - name: StatelessContextViewer
+      type: agent
+      llm_config:
+        model: ${LLM_MODEL}
+        api_key: ${LLM_API_KEY}
+        base_url: ${LLM_BASE_URL}
+      system_message: "You are a stateless context viewer that shows available contexts without maintaining conversation history."
+      keep_history: false
+      tools:
+        - name: get_contexts
+          type: function
+          python_path: examples.memory_task_management.task_tools.get_contexts
+          description: "Get all available contexts"

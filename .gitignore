@@ -1,4 +1,7 @@
+.DS_Store
+
 logs*
+nexus_workflows
 chat.rapidgpt
 .vscode
 

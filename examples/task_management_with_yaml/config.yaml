@@ -1,6 +1,8 @@
+workflow_id: "task_management_workflow"  # Optional, will be auto-generated if not provided
 supervisor:
   name: TaskManager
   type: supervisor
+  is_assistant: false  # Main supervisor must be false
   llm_config:
     model: ${LLM_MODEL}
     api_key: ${LLM_API_KEY}
@@ -14,6 +16,7 @@ supervisor:
         api_key: ${LLM_API_KEY}
         base_url: ${LLM_BASE_URL}
       system_message: "You are responsible for creating new tasks."
+      keep_history: true  # Optional, defaults to true
       tools:
         - name: add_task
           type: function
@@ -23,8 +26,10 @@ supervisor:
             task:
               type: string
               description: "The task to be added"
+
     - name: TaskOrganizer
       type: supervisor
+      is_assistant: true  # Must be true for child supervisors
       llm_config:
         model: ${LLM_MODEL}
         api_key: ${LLM_API_KEY}
@@ -38,11 +43,13 @@ supervisor:
             api_key: ${LLM_API_KEY}
             base_url: ${LLM_BASE_URL}
           system_message: "You are responsible for listing tasks."
+          keep_history: true
           tools:
             - name: list_tasks
               type: function
               python_path: examples.task_management_with_yaml.task_tools.list_tasks
               description: "List all current tasks"
+
         - name: PriorityCalculator
           type: agent
           llm_config:
@@ -50,6 +57,7 @@ supervisor:
             api_key: ${LLM_API_KEY}
             base_url: ${LLM_BASE_URL}
           system_message: "You calculate the priority of tasks based on urgency and importance."
+          keep_history: true
           tools:
             - name: calculate_priority
               type: function
