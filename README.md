@@ -244,6 +244,80 @@ custom_workflow_123/
 
 All interactions, delegations, and tool usage are automatically logged and stored in the workflow directory, providing complete visibility into the decision-making process and execution flow.
 
+## MCP Server Integration
+
+PrimisAI Nexus supports automatic tool discovery and usage via external Model Context Protocol (MCP) servers. This enables seamless integration of local or remote tool infrastructures, including both SSE (HTTP) and stdio (local subprocess) transports.
+
+### Supported Transports
+
+- **SSE (HTTP/Server-Sent Events):**
+  - Connect to any MCP-compatible HTTP server exposing tools via an SSE endpoint.
+  - Recommended for remote, network-accessible, or containerized tool servers.
+
+- **Stdio (Local Subprocess):**
+  - Launches a local MCP server using Python as a subprocess and communicates over stdin/stdout.
+  - Recommended for securely sandboxed or development tool servers.
+
+### Configuration
+
+When creating an `Agent`, use the `mcp_servers` argument to specify a list of tool servers and their transport types:
+
+```python
+mcp_servers = [
+    {
+        "type": "sse",
+        "url": "http://localhost:8000/sse"
+    },
+    {
+        "type": "sse",
+        "url": "https://remote.mcpservers.org/fetch"
+    },
+    {
+        "type": "stdio",
+        "script_path": "examples/agent_with_mcp_stdio/weather_server.py"
+    }
+]
+```
+
+- For `"type": "sse"`, the `"url"` field must be the **exact SSE endpoint provided by your MCP server** (for example: `/sse`, `/fetch`, or another custom path). No path rewriting or appending is performed by the framework.
+- For `"type": "stdio"`, provide the path to your MCP server Python script as `"script_path"`.
+
+### Usage Example
+
+```python
+from primisai.nexus.core import Agent
+
+agent = Agent(
+    name="RemoteMCPAgent",
+    llm_config=llm_config,
+    mcp_servers=[
+        {"type": "sse", "url": "https://remote.mcpservers.org/fetch"},
+        {"type": "stdio", "script_path": "weather_server.py"}
+    ],
+    use_tools=True
+)
+
+agent.chat("What is 2 plus 3?")
+```
+
+### Manual Tool Refresh
+
+If tools are added, removed, or modified on any MCP server during runtime, call:
+
+```python
+agent.update_mcp_tools()
+```
+
+This will refresh the list of available MCP tools without restarting the agent.
+
+### Notes
+
+- If your SSE MCP server requires authentication, add an `"auth_token"` field to the server dictionary.
+- You can mix and match any number of SSE and stdio MCP servers per agent.
+- Tool schemas are converted automatically for use with function-calling models.
+
+For a complete working demonstration of using a Supervisor with multiple agents, each utilizing different MCP transport mechanisms (SSE and stdio), see the example and detailed instructions in: [Multiple Agents with MCP](examples/supervisor_multi_mcp/README.md)
+
 ## Citation
 If you find Nexus useful, please consider citing our preprint.
 ```bibtex
