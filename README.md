@@ -9,6 +9,9 @@ PrimisAI Nexus is a powerful and flexible Python package for managing AI agents 
 <img src="./examples/images/performance-coding.png" width="275"> <img src="./examples/images/performance-timing-closure.png" width="461">
 </div>
 
+## Demo
+https://github.com/user-attachments/assets/fc7f1cc1-f817-494d-aca8-586775e9062c
+
 ## Features
 
 - **AI Base Class**: A foundational class for AI interactions.
