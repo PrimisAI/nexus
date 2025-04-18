@@ -4,7 +4,7 @@ PrimisAI Nexus is committed to responsible vulnerability handling.
 
 ## Supported Versions
 
-We support and patch the latest release. Older versions are not maintained.
+We support and patch the latest release. Older versions will not be maintained.
 
 ## Reporting
 
@@ -22,7 +22,7 @@ Please report suspected security vulnerabilities **privately**:
 
 ## Response
 
-- **Fixes** for critical vulnerabilities released as soon as possible in the next patch
+- Fixes for critical vulnerabilities will be released as soon as possible in the next patch.
 
 ## Disclosure
 
