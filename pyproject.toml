@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "primisai"
-version = "0.5.0"
+version = "0.6.0"
 description = "Nexus is a powerful and flexible Python package for managing AI agents and coordinating complex tasks using LLMs."
 requires-python = ">=3.10"
-dependencies = [ "openai==1.66.3", "python-dotenv==1.0.1", "streamlit>=1.38.0", "pytest==8.3.4", "PyYAML==6.0.2",]
+dependencies = [ "openai==1.66.3", "python-dotenv==1.0.1", "streamlit>=1.38.0", "pytest==8.3.4", "PyYAML==6.0.2", "mcp[cli]==1.6.0",]
 keywords = [ "AI", "LLM", "framework", "AI agents",]
 classifiers = [ "Programming Language :: Python :: 3", "License :: OSI Approved :: MIT License", "Operating System :: OS Independent",]
 [[project.authors]]

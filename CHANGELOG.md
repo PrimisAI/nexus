@@ -1,7 +1,20 @@
 # CHANGELOG
 
 
+## v0.6.0 (2025-04-19)
+
+### Features
+
+* feat: MCP server integration (SSE and stdio) support & updated documentation (#23)
+
+Co-authored-by: Valerio Tenace <valerio.tenace@gmail.com> ([`32ba11f`](https://github.com/PrimisAI/nexus/commit/32ba11f7ee7c138a77f01542d72e06c046f5598a))
+
+
 ## v0.5.0 (2025-03-19)
+
+### Chores
+
+* chore(release): 🚀 bump version to 0.5.0 ([`77652aa`](https://github.com/PrimisAI/nexus/commit/77652aa2f298d35f30ea9398d407ccce530f0ec9))
 
 ### Features
 
