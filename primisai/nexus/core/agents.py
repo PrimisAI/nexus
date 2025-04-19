@@ -5,12 +5,15 @@ This module provides an Agent class that extends the base AI functionality
 with additional features like tool usage and chat history management.
 """
 
-import json
+import json, asyncio
 from typing import List, Dict, Optional, Any
 from openai.types.chat import ChatCompletionMessage
 from primisai.nexus.core.ai import AI
 from primisai.nexus.history import HistoryManager, EntityType
 from primisai.nexus.utils import Debugger
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.sse import sse_client
+from mcp.client.stdio import stdio_client
 
 
 class Agent(AI):
@@ -29,7 +32,8 @@ class Agent(AI):
                  tools: Optional[List[Dict[str, Any]]] = None,
                  system_message: Optional[str] = None,
                  use_tools: bool = False,
-                 keep_history: bool = True):
+                 keep_history: bool = True,
+                 mcp_servers: Optional[List[Dict[str, Any]]] = None):
         """
         Initialize the Agent instance.
 
@@ -41,31 +45,37 @@ class Agent(AI):
             system_message (Optional[str]): The initial system message for the agent.
             use_tools (bool): Whether to use tools in interactions.
             keep_history (bool): Whether to maintain chat history between interactions.
+            mcp_servers : Optional[List[Dict[str, Any]]], default None
+                List of dicts, where each defines an MCP server/proxy:
+                - For remote/SSE: {'type': 'sse', 'url': ..., 'auth_token': ...}
+                - For local/stdio: {'type': 'stdio', 'script_path': 'server.py'}
+                All discovered tools are available as functions to the agent.
 
         Raises:
-            ValueError: If the name is empty or if tools are enabled but not provided.
+            ValueError: If the name is empty.
         """
         super().__init__(llm_config=llm_config)
 
         if not name:
             raise ValueError("Agent name cannot be empty")
-        if use_tools and not tools:
-            raise ValueError("Tools must be provided when use_tools is True")
 
         self.name = name
         self.workflow_id = workflow_id
         self.use_tools = use_tools
         self.tools = tools or []
-        self.tools_metadata = [tool['metadata'] for tool in self.tools]
         self.system_message = system_message
         self.keep_history = keep_history
         self.history_manager = None
         self.debugger = Debugger(name=self.name, workflow_id=None)
         self.debugger.start_session()
         self.chat_history: List[Dict[str, str]] = []
+        self.mcp_servers = mcp_servers or []
+        self._mcp_tool_names = set()
 
         if system_message:
             self.set_system_message(system_message)
+        
+        asyncio.run(self._load_mcp_tools())
 
     def set_workflow_id(self, workflow_id: str) -> None:
         """
@@ -133,7 +143,7 @@ class Agent(AI):
             try:
                 response = self.generate_response(
                     self.chat_history,
-                    tools=self.tools_metadata,
+                    tools=[tool['metadata'] for tool in self.tools],
                     use_tools=self.use_tools
                 ).choices[0]
 
@@ -251,6 +261,186 @@ class Agent(AI):
             error_msg = f"Tool execution failed: {str(e)}"
             self.debugger.log(error_msg, level="error")
             raise RuntimeError(error_msg) from e
+    
+    async def _load_mcp_tools(self):
+        """
+        Discover and register tools from all MCP servers configured in self.mcp_servers.
+
+        This method connects to each specified MCP server using the configured transport
+        (either "sse" or "stdio"), retrieves the available tools, converts their schemas
+        to OpenAI-compatible format, and registers proxy functions for each tool. It
+        removes any previously loaded MCP tools before loading new ones.
+
+        Raises:
+            ValueError: If an unknown transport type is encountered in the MCP server config.
+            Exception: For any network, process, or protocol-level error during tool discovery.
+        """
+        self._remove_all_mcp_tools()
+        self._mcp_tool_names = set()
+        for server in self.mcp_servers:
+            ttype = server.get("type", "sse")  # default to sse
+            try:
+                if ttype == "sse":
+                    url = server["url"]
+                    auth_token = server.get("auth_token")
+                    endpoint = url  # Use the user-supplied URL exactly as written
+                    headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+                    async with sse_client(endpoint, headers=headers) as streams:
+                        async with ClientSession(*streams) as session:
+                            await session.initialize()
+                            ntools_resp = await session.list_tools()
+                            ntools = ntools_resp.tools
+                            for tool in ntools:
+                                openai_tool_meta = self._convert_mcp_tool_to_openai(tool)
+                                tname = openai_tool_meta["function"]["name"]
+                                proxy = self._build_mcp_tool_proxy(
+                                    transport_type="sse",
+                                    conf={"url": url, "auth_token": auth_token},
+                                    tool_name=tname
+                                )
+                                tool_dict = {
+                                    "tool": proxy,
+                                    "metadata": openai_tool_meta,
+                                    "_mcp_tool": True
+                                }
+                                self.tools.append(tool_dict)
+                                self._mcp_tool_names.add(tname)
+                elif ttype == "stdio":
+                    script_path = server["script_path"]
+                    server_params = StdioServerParameters(
+                        command="python",
+                        args=[script_path],
+                        env=None
+                    )
+                    async with stdio_client(server_params) as (stdio, write):
+                        async with ClientSession(stdio, write) as session:
+                            await session.initialize()
+                            ntools_resp = await session.list_tools()
+                            ntools = ntools_resp.tools
+                            for tool in ntools:
+                                openai_tool_meta = self._convert_mcp_tool_to_openai(tool)
+                                tname = openai_tool_meta["function"]["name"]
+                                proxy = self._build_mcp_tool_proxy(
+                                    transport_type="stdio",
+                                    conf={"script_path": script_path},
+                                    tool_name=tname
+                                )
+                                tool_dict = {
+                                    "tool": proxy,
+                                    "metadata": openai_tool_meta,
+                                    "_mcp_tool": True
+                                }
+                                self.tools.append(tool_dict)
+                                self._mcp_tool_names.add(tname)
+                else:
+                    raise ValueError(f"[MCP] Unknown transport type: {ttype}")
+            except Exception as e:
+                print(f"[MCP] Error loading tools from {server}: {e}")
+        self.tools_metadata = [tool['metadata'] for tool in self.tools]
+
+    def _convert_mcp_tool_to_openai(self, tool) -> Dict[str, Any]:
+        """
+        Convert an MCP tool object to an OpenAI-compatible function/tool schema.
+
+        This method translates the MCP tool's name, description, and input schema
+        into the OpenAI function calling format for inclusion in the agent's tool list.
+
+        Args:
+            tool: The MCP tool object as returned by the MCP server.
+
+        Returns:
+            Dict[str, Any]: The tool schema in OpenAI format, ready for tool calling.
+
+        Note:
+            - All input parameters will be set as required for compatibility with OpenAI.
+        """
+        openai_tool = {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": getattr(tool, 'description', '') or "MCP tool.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            }
+        }
+        # Extract properties and required fields from MCP input schema
+        if hasattr(tool, 'inputSchema') and tool.inputSchema:
+            schema = tool.inputSchema
+            property_names = []
+            properties = schema.get("properties", {})
+            for prop_name, prop_details in properties.items():
+                prop_copy = {k: v for k, v in prop_details.items() if k != 'default'}
+                openai_tool["function"]["parameters"]["properties"][prop_name] = prop_copy
+                property_names.append(prop_name)
+            openai_tool["function"]["parameters"]["required"] = property_names
+        return openai_tool
+            
+    def _build_mcp_tool_proxy(self, transport_type, conf, tool_name):
+        """
+        Create a synchronous Python proxy function for invoking an MCP tool.
+
+        Depending on the transport type ("sse" or "stdio"), this factory builds a proxy
+        function that accepts tool arguments as keyword arguments, then manages the
+        necessary asynchronous communication to invoke the MCP tool and retrieve the result.
+
+        Args:
+            transport_type (str): The MCP transport type ("sse" or "stdio").
+            conf (dict): Connection configuration dictionary (e.g., URL or script_path).
+            tool_name (str): Name of the tool to invoke on the MCP server.
+
+        Returns:
+            Callable: A Python function that accepts keyword arguments and returns the tool's result.
+
+        Raises:
+            Exception: If calling the MCP tool fails for transport or invocation reasons.
+        """
+        def proxy(**kwargs):
+            async def _call_sse():
+                url = conf["url"]
+                auth_token = conf.get("auth_token")
+                endpoint = url  # Use the user-supplied URL exactly as written
+                headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+                async with sse_client(endpoint, headers=headers) as streams:
+                    async with ClientSession(*streams) as session:
+                        await session.initialize()
+                        result = await session.call_tool(tool_name, arguments=kwargs)
+                        if hasattr(result, "content") and result.content:
+                            return result.content[0].text
+                        return str(result)
+            async def _call_stdio():
+                script_path = conf["script_path"]
+                server_params = StdioServerParameters(
+                    command="python",
+                    args=[script_path],
+                    env=None
+                )
+                async with stdio_client(server_params) as (stdio, write):
+                    async with ClientSession(stdio, write) as session:
+                        await session.initialize()
+                        result = await session.call_tool(tool_name, arguments=kwargs)
+                        if hasattr(result, "content") and result.content:
+                            return result.content[0].text
+                        return str(result)
+            try:
+                if transport_type == "sse":
+                    return asyncio.run(_call_sse())
+                elif transport_type == "stdio":
+                    return asyncio.run(_call_stdio())
+                else:
+                    raise ValueError(f"Unknown MCP transport {transport_type}")
+            except Exception as e:
+                return f"[MCP] Tool '{tool_name}' call failed: {e}"
+        return proxy
+
+    def _remove_all_mcp_tools(self):
+        """
+        Removes all tools loaded from MCP servers from self.tools.
+        """
+        self.tools = [t for t in self.tools if not t.get('_mcp_tool', False)]
+        self._mcp_tool_names = set()
         
     def get_chat_history(self) -> List[Dict[str, str]]:
         """
@@ -260,6 +450,19 @@ class Agent(AI):
             List[Dict[str, str]]: The current chat history.
         """
         return self.chat_history
+    
+    def update_mcp_tools(self):
+        """
+        Refresh the agent's tools by re-discovering available tools from all MCP servers.
+
+        This method removes all previously registered MCP tools, re-connects to all configured
+        MCP servers, and loads the updated tool lists into the agent. Call this method if you
+        add, remove, or update tools on any MCP server during runtime.
+
+        Raises:
+            Exception: For any underlying error in the discovery or registration process.
+        """
+        asyncio.run(self._load_mcp_tools())
         
     def _reset_chat_history(self) -> None:
         """Reset chat history to initial state (system message only)."""

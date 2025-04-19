@@ -26,7 +26,7 @@ class AI:
                 Must contain 'api_key' and 'model'. May optionally include 'base_url' and 'temperature'.
 
         Raises:
-            ValueError: If required configuration keys are missing.
+            ValueError: If required configuration keys are missing or if tools are enabled but not provided.
         """
         if not all(key in llm_config for key in ['api_key', 'model']):
             raise ValueError("llm_config must contain 'api_key' and 'model'")
