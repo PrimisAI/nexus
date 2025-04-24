@@ -58,20 +58,25 @@ class Supervisor(AI):
         self.workflow_id = workflow_id
         
         self._pending_registrations: List[Union[Agent, 'Supervisor']] = []
+        self.system_message = system_message if system_message is not None else self._get_default_system_message()
         
         if not is_assistant:
-            self._initialize_workflow()
-            self.history_manager = HistoryManager(self.workflow_id)
+            if workflow_id:
+                self.history_manager = HistoryManager(workflow_id)
+                if not self.history_manager.has_system_message(self.name):
+                    self._initialize_chat_history()
+            else:
+                self._initialize_workflow()
+                self.history_manager = HistoryManager(self.workflow_id)
+                self._initialize_chat_history()
         else:
             self.history_manager = None
         
-        self.system_message = system_message if system_message is not None else self._get_default_system_message()
         self.registered_agents: List[Union[Agent, 'Supervisor']] = []
         self.available_tools: List[Dict[str, Any]] = []
         self.use_agents = use_agents
         
         self.chat_history: List[Dict[str, str]] = []
-        self._initialize_chat_history()
         
         self.debugger = Debugger(name=self.name, workflow_id=self.workflow_id)
         self.debugger.start_session()
@@ -93,16 +98,17 @@ class Supervisor(AI):
 
     def _initialize_chat_history(self) -> None:
         """Initialize chat history with system message and record in history manager."""
-        system_msg = {'role': 'system', 'content': self.system_message}
-        self.chat_history = [system_msg]
-        
-        if self.history_manager:
-            self.history_manager.append_message(
-                message=system_msg,
-                sender_type=EntityType.MAIN_SUPERVISOR if not self.is_assistant 
-                        else EntityType.ASSISTANT_SUPERVISOR,
-                sender_name=self.name
-            )
+        if self.system_message:
+            system_msg = {'role': 'system', 'content': self.system_message}
+            self.chat_history = [system_msg]
+            
+            if self.history_manager:
+                self.history_manager.append_message(
+                    message=system_msg,
+                    sender_type=EntityType.MAIN_SUPERVISOR if not self.is_assistant
+                            else EntityType.ASSISTANT_SUPERVISOR,
+                    sender_name=self.name
+                )
 
     def configure_system_prompt(self, system_prompt: str) -> None:
         """

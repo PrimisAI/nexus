@@ -89,7 +89,7 @@ class Agent(AI):
         self.debugger.update_workflow_id(workflow_id)
         self.history_manager = HistoryManager(workflow_id)
         
-        if self.system_message:
+        if self.system_message and not self.history_manager.has_system_message(self.name):
             self.history_manager.append_message(
                 message={"role": "system", "content": self.system_message},
                 sender_type=EntityType.AGENT,
