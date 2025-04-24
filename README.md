@@ -153,6 +153,19 @@ nexus_workflows/
     └── StandaloneAgent.log
 ```
 
+## Loading Persistent Chat History
+
+You can restore any agent or supervisor's LLM-compatible context with a single call, enabling true warm starts and reproducibility, even for multi-level workflows.
+
+```python
+from primisai.nexus.history import HistoryManager
+
+manager = HistoryManager(workflow_id)
+supervisor.chat_history = manager.load_chat_history("SupervisorName")
+agent.chat_history = manager.load_chat_history("AgentName")
+```
+This ensures that only the relevant delegated turns, tool calls, and responses are loaded for each entity, preserving correct and replayable LLM state across runs.
+
 ## Advanced Usage
 
 PrimisAI Nexus allows for complex interactions between multiple agents. You can create specialized agents for different tasks, register them with a supervisor, and let the supervisor manage the flow of information and task delegation.
