@@ -33,7 +33,9 @@ class Agent(AI):
                  system_message: Optional[str] = None,
                  use_tools: bool = False,
                  keep_history: bool = True,
-                 mcp_servers: Optional[List[Dict[str, Any]]] = None):
+                 mcp_servers: Optional[List[Dict[str, Any]]] = None,
+                 output_schema: Optional[Dict[str, Any]] = None,
+                 strict: bool = False):
         """
         Initialize the Agent instance.
 
@@ -50,6 +52,8 @@ class Agent(AI):
                 - For remote/SSE: {'type': 'sse', 'url': ..., 'auth_token': ...}
                 - For local/stdio: {'type': 'stdio', 'script_path': 'server.py'}
                 All discovered tools are available as functions to the agent.
+            output_schema (Optional[Dict[str, Any]]): Schema for agent's output format.
+            strict (bool): If True, always enforce output schema.
 
         Raises:
             ValueError: If the name is empty.
@@ -71,6 +75,8 @@ class Agent(AI):
         self.chat_history: List[Dict[str, str]] = []
         self.mcp_servers = mcp_servers or []
         self._mcp_tool_names = set()
+        self.output_schema = output_schema
+        self.strict = strict
 
         if system_message:
             self.set_system_message(system_message)
@@ -98,13 +104,57 @@ class Agent(AI):
 
     def set_system_message(self, message: str) -> None:
         """
-        Set the system message for the agent.
+        Set the system message for the agent, including output schema if specified.
 
         Args:
             message (str): The system message to set.
         """
+        if self.output_schema:
+            schema_instruction = (
+                "\n\nYOU MUST ALWAYS RESPOND IN THE FOLLOWING FORMAT:\n"
+                f"{json.dumps(self.output_schema, indent=2)}\n"
+                "Your entire response must be valid JSON matching this schema.\n"
+            )
+            message = message + schema_instruction
+        
         self.system_message = message
         self._reset_chat_history()
+
+    def _validate_and_format_response(self, response: str) -> str:
+        """
+        Validate response against schema and reformat if needed.
+        
+        Args:
+            response (str): Raw response from LLM
+            
+        Returns:
+            str: Validated/formatted response
+        """
+        if not self.output_schema:
+            return response
+
+        try:
+            parsed = json.loads(response)
+            return json.dumps(parsed)
+        except json.JSONDecodeError:
+            if not self.strict:
+                return response
+            
+            format_prompt = (
+                f"Given this response:\n'''\n{response}\n'''\n"
+                f"Reformat it to match this schema:\n{json.dumps(self.output_schema, indent=2)}\n"
+                "Return ONLY the formatted JSON, nothing else."
+            )
+            
+            formatted = self.generate_response(
+                messages=[{"role": "user", "content": format_prompt}]
+            ).choices[0].message.content
+
+            try:
+                return json.dumps(json.loads(formatted))
+            except json.JSONDecodeError:
+                self.debugger.log("Schema enforcement failed", level="error")
+                return response
 
     def chat(self, query: str, sender_name: Optional[str] = None) -> str:
         """
@@ -149,6 +199,7 @@ class Agent(AI):
 
                 if not response.finish_reason == "tool_calls":
                     user_query_answer = response.message.content
+                    user_query_answer = self._validate_and_format_response(user_query_answer)
                     self.debugger.log(f"{self.name} response: {user_query_answer}")
                                         
                     response_msg = {"role": "assistant", "content": user_query_answer}
