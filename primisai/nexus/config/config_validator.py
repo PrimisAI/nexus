@@ -94,9 +94,30 @@ class ConfigValidator:
         for field in required_fields:
             if field not in agent:
                 raise ConfigValidationError(f"Missing required field '{field}' in agent configuration")
-        
-        if 'keep_history' in agent and not isinstance(agent['keep_history'], bool):
-            raise ConfigValidationError("'keep_history' must be a boolean value")
+                
+        bool_fields = ['keep_history', 'use_tools', 'strict']
+        for field in bool_fields:
+            if field in agent and not isinstance(agent[field], bool):
+                raise ConfigValidationError(f"'{field}' must be a boolean value")
+                
+        if 'output_schema' in agent:
+            if not isinstance(agent['output_schema'], dict):
+                raise ConfigValidationError("output_schema must be a dictionary")
+            if 'type' not in agent['output_schema']:
+                raise ConfigValidationError("output_schema must have 'type' field")
+                
+        if 'mcp_servers' in agent:
+            if not isinstance(agent['mcp_servers'], list):
+                raise ConfigValidationError("mcp_servers must be a list")
+            for server in agent['mcp_servers']:
+                if 'type' not in server:
+                    raise ConfigValidationError("Each MCP server must have 'type' field")
+                if server['type'] not in ['sse', 'stdio']:
+                    raise ConfigValidationError("MCP server type must be 'sse' or 'stdio'")
+                if server['type'] == 'sse' and 'url' not in server:
+                    raise ConfigValidationError("SSE MCP server must have 'url' field")
+                if server['type'] == 'stdio' and 'script_path' not in server:
+                    raise ConfigValidationError("stdio MCP server must have 'script_path' field")
         
         ConfigValidator._validate_llm_config(agent['llm_config'])
         ConfigValidator._validate_tools(agent.get('tools', []))
