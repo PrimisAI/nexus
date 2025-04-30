@@ -21,6 +21,7 @@ https://github.com/user-attachments/assets/fc7f1cc1-f817-494d-aca8-586775e9062c
 - **Persistent History**: Built-in conversation history management with JSONL storage.
 - **Integrated Logging**: Organized logging system within workflow structure.
 - **Debugger Utility**: Integrated debugging capabilities for logging and troubleshooting.
+- **Structured Agent Outputs**: Support for schema-defined, structured responses with validation.
 - **Flexible Configuration**: Easy-to-use configuration options for language models and agents.
 - **Flexible LLM Parameters**: Direct control over all language model parameters through configuration.
 - **Interactive Sessions**: Built-in support for interactive chat sessions with the AI system.
@@ -153,6 +154,19 @@ nexus_workflows/
     └── StandaloneAgent.log
 ```
 
+## Loading Persistent Chat History
+
+You can restore any agent or supervisor's LLM-compatible context with a single call, enabling true warm starts and reproducibility, even for multi-level workflows.
+
+```python
+from primisai.nexus.history import HistoryManager
+
+manager = HistoryManager(workflow_id)
+supervisor.chat_history = manager.load_chat_history("SupervisorName")
+agent.chat_history = manager.load_chat_history("AgentName")
+```
+This ensures that only the relevant delegated turns, tool calls, and responses are loaded for each entity, preserving correct and replayable LLM state across runs.
+
 ## Advanced Usage
 
 PrimisAI Nexus allows for complex interactions between multiple agents. You can create specialized agents for different tasks, register them with a supervisor, and let the supervisor manage the flow of information and task delegation.
@@ -172,6 +186,61 @@ tools = [
 research_agent = Agent("Researcher", llm_config, tools=tools, system_message="You are a research assistant.", use_tools=True)
 supervisor.register_agent(research_agent)
 ```
+
+### Structured Agent Outputs
+PrimisAI Nexus allows agents to provide schema-validated, structured outputs. This ensures consistent response formats and enables reliable downstream processing.
+
+```python
+# Define an output schema for a code-writing agent
+code_schema = {
+    "type": "object",
+    "properties": {
+        "description": {
+            "type": "string",
+            "description": "Explanation of the code's purpose"
+        },
+        "code": {
+            "type": "string",
+            "description": "The actual code implementation"
+        },
+        "language": {
+            "type": "string",
+            "description": "Programming language used"
+        }
+    },
+    "required": ["description", "code"]
+}
+
+# Create an agent with structured output
+code_agent = Agent(
+    name="CodeWriter",
+    llm_config=llm_config,
+    system_message="You are a skilled programmer.",
+    output_schema=code_schema,
+    strict=True  # Enforce schema validation
+)
+
+# Agent responses will be automatically formatted and validated
+response = code_agent.chat("Write a function to calculate factorial")
+# Response will be JSON-structured:
+# {
+#     "description": "Function to calculate factorial of a number",
+#     "code": "def factorial(n):\n    if n <= 1: return 1\n    return n * factorial(n-1)",
+#     "language": "python"
+# }
+```
+
+The `output_schema` parameter defines the expected structure of the agent's responses, while the `strict` parameter controls validation:
+- When `strict=True`, responses are guaranteed to match the schema
+- When `strict=False`, the agent attempts to follow the schema but falls back to unstructured responses if needed
+
+This feature is particularly useful for:
+- Ensuring consistent output formats
+- Building reliable agent pipelines
+- Automated processing of agent responses
+- Integration with downstream systems
+
+For detailed examples of schema usage, including complex workflows with multiple schema-aware agents, see the [output schema examples](examples/output_schema_examples.py) and [schema-aware workflow example](examples/schema_aware_workflow_example.py).
 
 ### Hierarchical Supervisor Structure
 

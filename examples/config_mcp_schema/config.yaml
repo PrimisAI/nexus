@@ -1,0 +1,79 @@
+workflow_id: "complete_workflow_example"
+
+supervisor:
+  name: MainSupervisor
+  type: supervisor
+  llm_config:
+    model: ${LLM_MODEL}
+    api_key: ${LLM_API_KEY}
+    base_url: ${LLM_BASE_URL}
+  system_message: "You are the main supervisor coordinating specialized agents."
+  children:
+    - name: CodeWriter
+      type: agent
+      llm_config:
+        model: ${LLM_MODEL}
+        api_key: ${LLM_API_KEY}
+        base_url: ${LLM_BASE_URL}
+      system_message: "You are a Python code writer."
+      keep_history: true
+      strict: true
+      output_schema:
+        type: "object"
+        properties:
+          description:
+            type: "string"
+            description: "Explanation of the code"
+          code:
+            type: "string"
+            description: "The actual code implementation"
+          language:
+            type: "string"
+            description: "Programming language used"
+        required: ["description", "code"]
+      
+    - name: WeatherAgent
+      type: agent
+      llm_config:
+        model: ${LLM_MODEL}
+        api_key: ${LLM_API_KEY}
+        base_url: ${LLM_BASE_URL}
+      system_message: "You provide weather information."
+      use_tools: true
+      keep_history: true
+      mcp_servers:
+        - type: stdio
+          script_path: "examples/supervisor_multi_mcp/weather_server.py"
+      
+    - name: AnalysisManager
+      type: supervisor
+      is_assistant: true
+      llm_config:
+        model: ${LLM_MODEL}
+        api_key: ${LLM_API_KEY}
+        base_url: ${LLM_BASE_URL}
+      system_message: "You manage data analysis tasks."
+      children:
+        - name: DataAnalyst
+          type: agent
+          llm_config:
+            model: ${LLM_MODEL}
+            api_key: ${LLM_API_KEY}
+            base_url: ${LLM_BASE_URL}
+          system_message: "You analyze data and provide insights."
+          strict: true
+          output_schema:
+            type: "object"
+            properties:
+              summary:
+                type: "string"
+                description: "Brief analysis summary"
+              key_points:
+                type: "array"
+                items:
+                  type: "string"
+              recommendations:
+                type: "array"
+                items:
+                  type: "string"
+            required: ["summary", "key_points"]

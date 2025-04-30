@@ -18,7 +18,7 @@ Note:
     Workflow directory must be initialized by a main supervisor before use.
 """
 
-import os
+import os, collections
 import json
 import uuid
 from datetime import datetime
@@ -133,31 +133,90 @@ class HistoryManager:
 
     def load_chat_history(self, entity_name: str) -> List[Dict[str, Any]]:
         """
-        Load relevant chat history for an entity.
+        Load and reconstruct the LLM-compatible conversation history for a given entity (supervisor or agent).
 
-        This method is used when initializing or restoring an entity's state.
-        It returns messages in a format compatible with chat_history.
+        This function extracts only those messages from the full workflow history that were 
+        truly exchanged with or delegated to this entity, ensuring that synthetic user prompts, 
+        agent LLM responses, tool calls, and tool results are correctly ordered and threaded 
+        as would be expected by any LLM for conversation continuation. Irrelevant messages 
+        intended for other agents are excluded.
 
         Args:
-            entity_name (str): Name of the entity (supervisor or agent)
+            entity_name (str): The name of the entity for which to load chat history 
+                (e.g. supervisor, assistant supervisor, or agent).
 
         Returns:
-            List[Dict[str, Any]]: List of messages in chat_history format
+            List[Dict[str, Any]]: Ordered list of chat messages in the expected chat_history 
+                format for initializing or restoring the entity's LLM context.
 
         Example:
             >>> agent.chat_history = history_manager.load_chat_history("AgentName")
         """
-        history = []
         if not self.history_file.exists():
-            return history
+            return []
+        
+        with open(self.history_file, "r") as f:
+            all_msgs = [json.loads(line) for line in f]
 
-        with open(self.history_file, 'r') as f:
-            for line in f:
-                msg = json.loads(line)
-                if self._is_relevant_message(msg, entity_name):
-                    history.append(self._format_for_chat_history(msg))
+        system = next(
+            (m for m in all_msgs if m["role"] == "system" and m["sender_name"] == entity_name),
+            None
+        )
+        history = []
+        if system:
+            history.append(self._format_for_chat_history(system))
 
-        return self._sort_messages(history)
+        delegated_user_msgs = []
+        for m in all_msgs:
+            if m["role"] == "user":
+                if m.get("supervisor_chain") and m["supervisor_chain"] and m["supervisor_chain"][-1] == entity_name:
+                    delegated_user_msgs.append(m)
+                else:
+                    if any(
+                        n["role"] == "assistant" and n["sender_name"] == entity_name and n.get("parent_id") == m["message_id"]
+                        for n in all_msgs
+                    ):
+                        delegated_user_msgs.append(m)
+
+        delegated_user_msgs.sort(key=lambda x: x["timestamp"])
+
+        for user_msg in delegated_user_msgs:
+            history.append(self._format_for_chat_history(user_msg))
+            
+            queue = collections.deque()
+            
+            children = [m for m in all_msgs if m.get("parent_id") == user_msg["message_id"]]
+            children = [m for m in children if m["sender_name"] == entity_name or m["role"] == "tool"]
+            children.sort(key=lambda x: x["timestamp"])
+            
+            for ch in children:
+                queue.append(ch)
+            while queue:
+                msg = queue.popleft()
+                formatted = self._format_for_chat_history(msg)
+                if formatted not in history:
+                    history.append(formatted)
+                if msg["role"] == "assistant" and msg.get("tool_calls"):
+                    for tool_call in msg["tool_calls"]:
+                        tool_msgs = [
+                            t for t in all_msgs
+                            if t["role"] == "tool"
+                            and t.get("tool_call_id") == tool_call["id"]
+                            and t.get("parent_id") == msg["message_id"]
+                        ]
+                        tool_msgs.sort(key=lambda x: x["timestamp"])
+                        for tmsg in tool_msgs:
+                            tfmt = self._format_for_chat_history(tmsg)
+                            if tfmt not in history:
+                                history.append(tfmt)
+
+                            wrapups = [mm for mm in all_msgs if mm.get("parent_id") == tmsg["message_id"]
+                                    and mm["sender_name"] == entity_name]
+                            wrapups.sort(key=lambda x: x["timestamp"])
+                            for wmsg in wrapups:
+                                queue.append(wmsg)
+
+        return history
 
     def get_frontend_history(self) -> List[Dict[str, Any]]:
         """
@@ -193,65 +252,61 @@ class HistoryManager:
 
         return self._build_conversation_thread(messages)
 
-    def _is_relevant_message(self, msg: Dict[str, Any], entity_name: str) -> bool:
-        """
-        Determine if a message is relevant for an entity's chat history.
-
-        Args:
-            msg (Dict[str, Any]): Message to check
-            entity_name (str): Name of the entity
-
-        Returns:
-            bool: True if message is relevant for the entity
-        """
-        # Direct messages to/from the entity
-        if msg['sender_name'] == entity_name:
-            return True
-
-        # Messages where entity is in the supervisor chain
-        if entity_name in msg.get('supervisor_chain', []):
-            return True
-
-        # System messages
-        if msg['role'] == 'system':
-            return True
-        
-        # Messages that entity should see as delegated tasks
-        if msg['role'] == 'user' and msg['sender_type'] in [
-            EntityType.MAIN_SUPERVISOR,
-            EntityType.ASSISTANT_SUPERVISOR
-        ]:
-            # Check tool calls for delegation
-            if 'tool_calls' in msg:
-                tool_call = msg.get('tool_calls', [{}])[0]
-                if tool_call.get('function', {}).get('name', '').endswith(entity_name.lower()):
-                    return True
-
-        return False
-
     def _format_for_chat_history(self, msg: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Format a message for use in chat_history.
+        Format a raw persisted message as an LLM-compatible chat turn.
+
+        Converts a stored message (from history.jsonl) into the minimal 
+        chat message dict expected by the LLM OpenAI-compatible API: 
+        always includes 'role' and 'content', and optionally adds 
+        'tool_calls' (for assistant tool call steps) or 'tool_call_id' and 
+        'name' (for tool response steps).
 
         Args:
-            msg (Dict[str, Any]): Raw message from storage
+            msg (Dict[str, Any]): Raw message object loaded from the workflow history.
 
         Returns:
-            Dict[str, Any]: Formatted message for chat_history
+            Dict[str, Any]: A minimal chat message ready for LLM dialog replay,
+                compatible with openai.ChatCompletion and similar APIs.
+
+        Returns Example:
+            # For role='assistant'
+            {'role': 'assistant', 'content': '...' [, 'tool_calls': [...] ]}
+            # For role='tool'
+            {'role': 'tool', 'content': '42', 'tool_call_id': 'call_xyz', 'name': 'calculate'}
         """
-        # Extract fields used in chat_history
         formatted = {
-            'role': msg['role'],
-            'content': msg['content']
+            "role": msg["role"],
+            "content": msg.get("content", ""),
         }
-
-        # Include tool-specific fields if present
-        if 'tool_calls' in msg:
-            formatted['tool_calls'] = msg['tool_calls']
-        if 'tool_call_id' in msg and msg['tool_call_id']:
-            formatted['tool_call_id'] = msg['tool_call_id']
-
+        if "tool_calls" in msg and msg["tool_calls"]:
+            formatted["tool_calls"] = msg["tool_calls"]
+        if msg["role"] == "tool":
+            formatted["tool_call_id"] = msg.get("tool_call_id")
+            formatted["name"] = msg["sender_name"]   # who returned tool output
         return formatted
+    
+    def has_system_message(self, entity_name: str) -> bool:
+        """
+        Check if system message exists for an entity in the current workflow.
+        
+        Args:
+            entity_name (str): Name of the entity to check
+            
+        Returns:
+            bool: True if system message exists, False otherwise
+        """
+        if not self.history_file.exists():
+            return False
+            
+        with open(self.history_file, 'r') as f:
+            for line in f:
+                msg = json.loads(line)
+                if (msg['role'] == 'system' and 
+                    msg['sender_name'] == entity_name and 
+                    msg['workflow_id'] == self.workflow_id):
+                    return True
+        return False
 
     def _sort_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """

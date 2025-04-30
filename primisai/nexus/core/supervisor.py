@@ -58,20 +58,25 @@ class Supervisor(AI):
         self.workflow_id = workflow_id
         
         self._pending_registrations: List[Union[Agent, 'Supervisor']] = []
+        self.system_message = system_message if system_message is not None else self._get_default_system_message()
         
         if not is_assistant:
-            self._initialize_workflow()
-            self.history_manager = HistoryManager(self.workflow_id)
+            if workflow_id:
+                self.history_manager = HistoryManager(workflow_id)
+                if not self.history_manager.has_system_message(self.name):
+                    self._initialize_chat_history()
+            else:
+                self._initialize_workflow()
+                self.history_manager = HistoryManager(self.workflow_id)
+                self._initialize_chat_history()
         else:
             self.history_manager = None
         
-        self.system_message = system_message if system_message is not None else self._get_default_system_message()
         self.registered_agents: List[Union[Agent, 'Supervisor']] = []
         self.available_tools: List[Dict[str, Any]] = []
         self.use_agents = use_agents
         
         self.chat_history: List[Dict[str, str]] = []
-        self._initialize_chat_history()
         
         self.debugger = Debugger(name=self.name, workflow_id=self.workflow_id)
         self.debugger.start_session()
@@ -93,16 +98,17 @@ class Supervisor(AI):
 
     def _initialize_chat_history(self) -> None:
         """Initialize chat history with system message and record in history manager."""
-        system_msg = {'role': 'system', 'content': self.system_message}
-        self.chat_history = [system_msg]
-        
-        if self.history_manager:
-            self.history_manager.append_message(
-                message=system_msg,
-                sender_type=EntityType.MAIN_SUPERVISOR if not self.is_assistant 
-                        else EntityType.ASSISTANT_SUPERVISOR,
-                sender_name=self.name
-            )
+        if self.system_message:
+            system_msg = {'role': 'system', 'content': self.system_message}
+            self.chat_history = [system_msg]
+            
+            if self.history_manager:
+                self.history_manager.append_message(
+                    message=system_msg,
+                    sender_type=EntityType.MAIN_SUPERVISOR if not self.is_assistant
+                            else EntityType.ASSISTANT_SUPERVISOR,
+                    sender_name=self.name
+                )
 
     def configure_system_prompt(self, system_prompt: str) -> None:
         """
@@ -175,18 +181,32 @@ class Supervisor(AI):
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "agent_instruction": {
+                        "reasoning": {
                             "type": "string",
-                            "description": f"Instructions for the {agent.name} agent."
+                            "description": (
+                                f"Supervisor's reasoning for choosing the {agent.name} agent. "
+                                "Explain why this agent is being invoked and what is expected of it."
+                            )
                         },
-                        "thinking_process": {
+                        "query": {
                             "type": "string",
-                            "description": "Explanation of the decision-making process."
-                        }
+                            "description": (
+                                f"The actual query or instruction for {agent.name} agent to respond to."
+                            )
+                        },
+                        "context": {
+                            "type": "string",
+                            "description": (
+                                "All relevant background information, prior facts, decisions, "
+                                "and state needed by the agent to solve the current query. "
+                                "Should be as detailed and self-contained as possible."
+                            )
+                        },
                     },
-                    "required": ["agent_instruction", "thinking_process"]
+                    "required": ["reasoning", "query", "context"]
                 }
-            }
+            },
+            "strict": True,
         })
         
     def _initialize_workflow(self) -> None:
@@ -243,15 +263,17 @@ class Supervisor(AI):
         function_call = message.tool_calls[0]
         target_agent_name = function_call.function.name.replace("delegate_to_", "").lower()
         args = json.loads(function_call.function.arguments)
-        agent_instruction = args.get('agent_instruction')
-        thinking_process = args.get('thinking_process')
+        reasoning = args.get('reasoning')
+        context = args.get('context')
+        query = args.get('query')
 
-        if not agent_instruction:
-            raise ValueError("Agent instruction is missing from the function call")
+        if not query:
+            raise ValueError("Query is missing from the function call")
 
         self.debugger.log(f"[DELEGATION] Agent: {target_agent_name}")
-        self.debugger.log(f"[INSTRUCTION] {agent_instruction}")
-        self.debugger.log(f"[REASONING] {thinking_process}")
+        self.debugger.log(f"[REASONING] {reasoning}")
+        self.debugger.log(f"[CONTEXT] {context}")
+        self.debugger.log(f"[QUERY] {query}")
         
         current_chain = supervisor_chain or []
         current_chain.append(self.name)
@@ -259,7 +281,7 @@ class Supervisor(AI):
         for agent in self.registered_agents:
             if agent.name.lower() == target_agent_name:
                 agent_response = agent.chat(
-                    query=agent_instruction,
+                    query=f"CONTEXT:\n{context}\n\nQUERY:\n{query}",
                     sender_name=self.name
                 )
                 self.debugger.log(f"[RESPONSE] {target_agent_name}: {agent_response}")

@@ -95,14 +95,20 @@ class AgentFactory:
             Agent: The created Agent instance with its tools.
         """
         tools = AgentFactory._create_tools(agent_config.get('tools', []))
-        return Agent(
-            name=agent_config['name'],
-            llm_config=agent_config['llm_config'],
-            system_message=agent_config['system_message'],
-            tools=tools,
-            use_tools=bool(tools),
-            keep_history=agent_config.get('keep_history', True)
-        )
+    
+        agent_params = {
+            'name': agent_config['name'],
+            'llm_config': agent_config['llm_config'],
+            'system_message': agent_config['system_message'],
+            'tools': tools,
+            'use_tools': agent_config.get('use_tools', bool(tools)),
+            'keep_history': agent_config.get('keep_history', True),
+            'output_schema': agent_config.get('output_schema'),
+            'strict': agent_config.get('strict', False),
+            'mcp_servers': agent_config.get('mcp_servers', [])
+        }
+        
+        return Agent(**agent_params)
 
     @staticmethod
     def _create_tools(tools_config: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
