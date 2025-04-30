@@ -1,7 +1,18 @@
 # CHANGELOG
 
 
+## v0.7.0 (2025-04-30)
+
+### Features
+
+* feat: structured agent outputs, improved YAML configuration & enhanced history management (#25) ([`87930c4`](https://github.com/PrimisAI/nexus/commit/87930c43c85e1787b99179536c9342331a75e038))
+
+
 ## v0.6.0 (2025-04-19)
+
+### Chores
+
+* chore(release): 🚀 bump version to 0.6.0 ([`3062a62`](https://github.com/PrimisAI/nexus/commit/3062a6241a2bbea9839df0ac02d0f7b8cbf629fc))
 
 ### Features
 
