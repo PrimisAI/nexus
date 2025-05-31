@@ -316,6 +316,58 @@ custom_workflow_123/
 
 All interactions, delegations, and tool usage are automatically logged and stored in the workflow directory, providing complete visibility into the decision-making process and execution flow.
 
+
+## Automated Workflow Generation (Nexus Architect)
+
+Nexus features a Nexus Architect module that can **automatically generate complete, executable agent workflows from natural language task descriptions**. Given a high-level user prompt, Nexus Architect leverages LLM output-structured models to design, build, and validate multi-agent workflows—ready for testing or deployment.
+
+#### How It Works
+
+1. **User Input:**  
+   Provide a plain-language workflow description and an optional test query.
+2. **Workflow Expansion:**  
+   The system expands your query into detailed workflow components using Nexus guidelines.
+3. **Workflow Structuring:**  
+   The expanded description is structured into formal supervisor, agent, and tool definitions.
+4. **Workflow Building:**  
+   Builders validate and construct the Nexus workflow objects, which are ready for use or export.
+5. **Testing:**  
+   Instantly test the generated workflow using your sample query.
+
+#### Example Usage
+
+```python
+from primisai.nexus.architect import WorkflowExpander, WorkflowStructurer, WorkflowBuilder, prompts
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+llm_config = {
+    'model': 'gpt-4o',  # Use a model supporting structure outputs
+    'api_key': os.getenv('LLM_API_KEY'),
+    'base_url': os.getenv('LLM_BASE_URL')
+}
+user_query = "Create a workflow for bedtime story generation."
+test_query = "Create a bedtime story about a friendly star."
+
+expander = WorkflowExpander(llm_config)
+expanded_workflow = expander.expand_workflow_query(user_query, prompts.nexus_guidelines)
+
+structurer = WorkflowStructurer(llm_config)
+structured_workflow = structurer.structure_workflow(expanded_workflow)
+
+builder = WorkflowBuilder(structured_workflow, llm_config)
+main_supervisor = builder.build_and_validate()
+
+main_supervisor.display_agent_graph()
+print(main_supervisor.chat(test_query))
+```
+
+You can find a complete working example in: [`examples/generate_workflow_example.py`](examples/generate_workflow_example.py)
+
+> **Note:**  
+> Make sure to use an OpenAI model that supports *structured outputs* (such as `gpt-4o`, `o4-mini`, etc.) for the LLM-based structuring to function reliably.
+
 ## MCP Server Integration
 
 PrimisAI Nexus supports automatic tool discovery and usage via external Model Context Protocol (MCP) servers. This enables seamless integration of local or remote tool infrastructures, including both SSE (HTTP) and stdio (local subprocess) transports.
