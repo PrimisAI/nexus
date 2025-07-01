@@ -62,7 +62,11 @@ class Supervisor(AI):
         
         if not is_assistant:
             if workflow_id:
-                self.history_manager = HistoryManager(workflow_id)
+                try:
+                    self.history_manager = HistoryManager(workflow_id)
+                except:
+                    self._initialize_workflow()
+                    self.history_manager = HistoryManager(workflow_id)
                 if not self.history_manager.has_system_message(self.name):
                     self._initialize_chat_history()
             else:
