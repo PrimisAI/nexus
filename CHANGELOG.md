@@ -1,7 +1,18 @@
 # CHANGELOG
 
 
+## v0.7.1 (2025-07-01)
+
+### Bug Fixes
+
+* fix: broken `workflow_id` (#28) ([`483c0b9`](https://github.com/PrimisAI/nexus/commit/483c0b9f78ace356b408fe5292112feaeb514bfb))
+
+
 ## v0.7.0 (2025-04-30)
+
+### Chores
+
+* chore(release): 🚀 bump version to 0.7.0 ([`627a0de`](https://github.com/PrimisAI/nexus/commit/627a0de32eaf86486277e6d11836e5c0140ea262))
 
 ### Features
 
