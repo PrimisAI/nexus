@@ -75,14 +75,33 @@ def create_dynamic_schema(agent_names):
 
 
 class Prompter:
+    """
+    A specialized class for crafting and managing prompts for AI agents.
 
-    def __init__(self, agent_names, llm_config: Dict[str, str]):
+    Within a multi-agent framework, this class acts as a central prompt
+    engineering hub. It is responsible for creating contextually-aware and
+    role-specific prompts that guide each agent's behavior and responses.
+
+    By encapsulating prompt logic here, we can easily manage system messages,
+    task instructions, and the formatting of conversational history to ensure
+    agents perform their designated functions effectively.
+    """
+
+    def __init__(self, agent_names: List[str], llm_config: Dict[str, str]):
         """
-        Initialize Prompter with LLM configuration and conversation management.
-        
+        Initializes the Prompter instance.
+
+        This constructor sets up the prompter with the names of the agents it will
+        be generating prompts for, and the configuration for the Language Model
+        that might be used in the prompting process.
+
         Args:
-            llm_config: Dictionary containing LLM configuration
-                       (api_key, model, base_url)
+            agent_names (List[str]): A list of unique string identifiers for the
+                AI agents in the system. This allows the prompter to tailor
+                instructions for specific agent roles.
+            llm_config (Dict[str, str]): A dictionary containing the configuration
+                for the Language Model client. It typically includes essential
+                keys like 'api_key', 'model', and 'base_url'.
         """
         self.ai = AI(llm_config)
         self.model = llm_config.get("model", "gpt-4.1")

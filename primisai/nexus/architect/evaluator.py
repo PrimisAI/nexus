@@ -14,15 +14,41 @@ import uuid
 
 
 class Evaluator:
+    """
+    Evaluates the performance of generated agentic workflows against a benchmark.
+
+    This class provides a framework for systematically testing the quality and
+    correctness of workflows created by the "Archtect" system. It operates by
+    running a generated workflow against a set of predefined tasks from a
+    benchmark file.
+
+    A key feature of this evaluator is its use of a Large Language Model (LLM)
+    as a "judge" to score the output of the workflow. The LLM compares the
+    workflow's final result against the ground-truth or expected outcome defined
+    in the benchmark, providing a flexible and nuanced assessment of performance.
+    """
 
     def __init__(self, llm_config: Dict[str, str], benchmark_path: str, subset_size: int = 10):
         """
-        Initialize Evaluator with benchmark data.
-        
+        Initializes the Evaluator by loading the benchmark dataset.
+
+        This constructor configures the LLM that will act as the evaluator and
+        loads the benchmark problems from the specified JSONL file. It can also
+        limit the evaluation to a smaller subset of the benchmark for faster testing.
+
         Args:
-            llm_config: LLM configuration for AI evaluator
-            benchmark_path: Path to the JSONL benchmark file
-            subset_size: Number of examples to test (default: 10)
+            llm_config (Dict[str, str]): The configuration for the Language Model
+                that will be used as the AI judge for scoring the results.
+            benchmark_path (str): The file path to the benchmark dataset. The file
+                is expected to be in JSONL (JSON Lines) format, where each line
+                is a JSON object representing a single test case.
+            subset_size (int, optional): The number of examples to load from the
+                benchmark file. If set, only the first `subset_size` examples
+                will be used. Defaults to 10 for quick evaluations.
+
+        Raises:
+            FileNotFoundError: If the file at `benchmark_path` does not exist.
+            ValueError: If `subset_size` is not a positive integer.
         """
         self.ai = AI(llm_config)
         self.benchmark_path = benchmark_path

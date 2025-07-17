@@ -9,8 +9,31 @@ class ValidationError(Exception):
 
 
 class ToolBuilder:
+    """
+    Translates a structured workflow definition into executable Python code.
+
+    This class acts as the "code generator" or "compiler" in the Archtect
+    pipeline. It takes a formal, structured definition of a workflow (as
+    produced by the `WorkflowStructurer`) and dynamically generates a runnable
+    Python script.
+
+    The generated script orchestrates the execution of the various components
+    (nodes) in the correct order, handling the data flow between them as
+e   defined by the edges of the workflow graph. The final output is a
+    self-contained piece of code ready to be executed or passed to the
+    `Evaluator` for performance assessment.
+    """
 
     def __init__(self, tool_definition: Tool):
+        """
+        Initializes the ToolBuilder with a complete workflow definition.
+
+        Args:
+            tool_definition (Tool): A structured object containing the full
+                specification of the workflow to be built. This object includes
+                the name, description, a list of component `nodes`, and a list
+                of `edges` that define the data flow graph.
+        """
         self.definition = tool_definition
 
     def build(self) -> Dict[str, Any]:

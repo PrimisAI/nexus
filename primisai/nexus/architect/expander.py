@@ -2,15 +2,37 @@ from primisai.nexus.core import AI
 from typing import Dict, Any
 
 
+
 class WorkflowExpander:
+    """
+    Analyzes a user's initial query and expands it into a detailed, narrative plan.
+
+    This class serves as the first step in the "Archtect" workflow creation
+    pipeline. It takes a concise, high-level user request and uses a Large
+    Language Model (LLM) to flesh it out into a comprehensive description.
+
+    The primary goal of the expansion is to reason about the user's intent and
+    propose a concrete plan. This includes identifying the individual tasks,
+    determining the number and roles of AI agents required (e.g., a researcher,
+    a writer), and deciding if a "supervisor" agent is needed to manage the
+    overall workflow.
+
+    The output of this class is a rich, natural-language text that serves as a
+    more detailed "expanded prompt" for the next component in the system, the
+    `WorkflowStructurer`.
+    """
 
     def __init__(self, llm_config: Dict[str, str]):
         """
-        Initialize WorkflowExpander with LLM configuration.
+        Initializes the WorkflowExpander with LLM configuration.
+
+        This constructor sets up the connection to the Large Language Model (LLM)
+        that will be used to perform the query expansion and analysis.
 
         Args:
-            llm_config: Dictionary containing LLM configuration
-                        (api_key, model, base_url)
+            llm_config (Dict[str, str]): A dictionary containing the configuration
+                for the Language Model client. This typically includes essential
+                details like 'api_key', 'model', and 'base_url'.
         """
         self.ai = AI(llm_config)
 
