@@ -5,6 +5,7 @@ from .prompter import Prompter
 from .evaluator import Evaluator
 from .schemas import *
 from .prompts import *
+from .manager import Architect
 
 __all__ = [
     "WorkflowExpander",

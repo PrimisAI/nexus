@@ -38,7 +38,7 @@ class WorkflowStructurer:
             "content": ("You are a workflow structure expert. Your task is to convert "
                         "the expanded workflow description into structured component "
                         "definitions following the provided schema. Include validation "
-                        "constraints for each component. USE same system messages provided in query if provided. DONT change them")
+                        "constraints for each component. Don't Use Sub Supervisors.")
         }, {
             "role":
                 "system",

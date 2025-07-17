@@ -1,17 +1,14 @@
-# primisai/nexus/architect/manager.py
-
 import os
 import datetime
 import logging
 from typing import Dict, Any, List, Optional
 
-from .expander import WorkflowExpander
-from .structurer import WorkflowStructurer
-from .builder import WorkflowBuilder
-from .prompter import Prompter
-from .evaluator import Evaluator
-from . import prompts  # Use relative import within the package
-from .schemas import StructuredWorkflow  # Import the schema for type hinting
+from primisai.nexus.architect.expander import WorkflowExpander
+from primisai.nexus.architect.structurer import WorkflowStructurer
+from primisai.nexus.architect.builder import WorkflowBuilder
+from primisai.nexus.architect.prompter import Prompter
+from primisai.nexus.architect.evaluator import Evaluator
+from primisai.nexus.architect import prompts
 
 # Configure logging for the library module
 logger = logging.getLogger(__name__)
@@ -36,12 +33,18 @@ class Architect:
                  subset_size: int = 10,
                  max_iterations: int = 5):
         """
-        Initializes the WorkflowArchitect.
+        Initializes the Architect.
 
         Args:
             user_query (str): The high-level user requirement for the workflow.
             benchmark_path (str): The file path to the JSONL training data.
-                                  Each line must be a JSON object with "question" and "answer" keys.
+                                  
+                                  IMPORTANT: Each line in this file must be a valid
+                                  JSON object containing the keys "question" and "answer".
+                                  
+                                  Example line:
+                                  {"question": "What is 2+2?", "answer": "4"}
+                                  
             llm_config (Dict[str, str]): Configuration for the language model,
                                          e.g., {'model': '...', 'api_key': '...'}.
             output_dir (str): Directory to save the final workflow file and logs.
@@ -72,7 +75,7 @@ class Architect:
         self.prompter: Optional[Prompter] = None  # Initialized after agents are known
 
         # --- Internal State ---
-        self.structured_workflow: Optional[StructuredWorkflow] = None
+        self.structured_workflow = None
         self.system_messages: Dict[str, str] = {}
         self.performance_history: List[Dict[str, Any]] = []
         self.workflow_id = self._generate_workflow_id()
@@ -134,7 +137,7 @@ class Architect:
         self.structured_workflow = self.structurer.structure_workflow(expanded_workflow)
 
         agents_names = [self.structured_workflow.main_supervisor.name] + [agent.name for agent in self.structured_workflow.agents]
-        logger.info(f"Identified agents: {', '.join(agents_names)}")
+        logger.info(f"Created agents: {', '.join(agents_names)}")
 
         logger.info("Step 2: Generating initial system prompts for all agents...")
         self.prompter = Prompter(agents_names, self.llm_config)
@@ -149,11 +152,13 @@ class Architect:
             logger.info(f"\n{'='*20} Iteration {i+1}/{self.max_iterations} {'='*20}")
 
             logger.info("Evaluating current workflow performance...")
-            evaluation_results = self.evaluator.evaluate_supervisor(
-                lambda suffix: self._create_supervisor_instance(self.workflow_id, suffix), self.workflow_id, iteration=i, is_factory=True)
+            evaluation_results = self.evaluator.evaluate_supervisor(self._create_supervisor_instance,
+                                                                    self.workflow_id,
+                                                                    iteration=i,
+                                                                    is_factory=True)
+
             accuracy = evaluation_results['accuracy']
             final_accuracy = accuracy
-            logger.info(f"Iteration {i+1} Accuracy: {accuracy:.2%}")
 
             output_path = self._save_workflow_to_file(accuracy, i)
 

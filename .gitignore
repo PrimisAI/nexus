@@ -4,6 +4,7 @@ logs*
 nexus_workflows
 chat.rapidgpt
 .vscode
+optimized_workflows/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

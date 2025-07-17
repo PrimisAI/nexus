@@ -240,7 +240,7 @@ class Evaluator:
             'detailed_results': self.results
         }
 
-        print(f"\n=== Final Evaluation Results ===")
+        print(f"\n=== Evaluation Results ===")
         print(f"Total Examples: {total_examples}")
         print(f"Correct Answers: {self.correct_answers}")
         print(f"Wrong Answers: {self.wrong_answers}")
@@ -279,8 +279,8 @@ class Evaluator:
             example_text = f"{result['question']}\nExpected Answer: {result['expected_answer']}\nPredicted Answer: {result['actual_response']}\nIs Correct: {result['is_correct']}\n"
 
             # Only include chat for selected examples
-            if result['id'] in chat_ids:
-                example_text += f"\nChat of this Example:\n{result['chat']}"
+            # if result['id'] in chat_ids:
+            #     example_text += f"\nChat of this Example:\n{result['chat']}"
 
             FAILED_METRIC += example_text + "\n\n---\n\n"
 
