@@ -1,11 +1,22 @@
 # CHANGELOG
 
 
+## v0.8.0 (2025-07-18)
+
+### Features
+
+* feat: Nexus Architect (#30) ([`78428a5`](https://github.com/PrimisAI/nexus/commit/78428a539165c4eaa188acc3efda5918acb54da2))
+
+
 ## v0.7.1 (2025-07-01)
 
 ### Bug Fixes
 
 * fix: broken `workflow_id` (#28) ([`483c0b9`](https://github.com/PrimisAI/nexus/commit/483c0b9f78ace356b408fe5292112feaeb514bfb))
+
+### Chores
+
+* chore(release): 🚀 bump version to 0.7.1 ([`e69ab39`](https://github.com/PrimisAI/nexus/commit/e69ab39802374255f782bd150899442bd6cf9e39))
 
 
 ## v0.7.0 (2025-04-30)
