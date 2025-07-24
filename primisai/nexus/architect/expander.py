@@ -36,7 +36,7 @@ class WorkflowExpander:
         """
         self.ai = AI(llm_config)
 
-    def expand_workflow_query(self, user_query: str, nexus_guidelines: str) -> str:
+    def decompose_and_plan_tasks(self, user_query: str, nexus_guidelines: str) -> str:
         """
         Expand a high-level workflow query into detailed component pseudocode.
 

@@ -319,7 +319,7 @@ class WorkflowBuilder:
             if agent.name in agent_messages:
                 agent.system_message = agent_messages[agent.name]
 
-    def build_and_validate(self) -> Supervisor:
+    def build_component_and_validate(self) -> Supervisor:
         """Build and validate all components, then assemble the workflow"""
         # 1. Build and validate main supervisor
         main_sup_builder = SupervisorBuilder(self.definition.main_supervisor, self.llm_config)

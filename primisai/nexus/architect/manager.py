@@ -110,7 +110,7 @@ class Architect:
         """Factory function to create a supervisor instance for evaluation."""
         run_id = f"{workflow_id}_{unique_suffix}"
         builder = WorkflowBuilder(self.system_messages, self.structured_workflow, self.llm_config, run_id)
-        return builder.build_and_validate()
+        return builder.build_component_and_validate()
 
     def _save_workflow_to_file(self, accuracy: float, iteration: int) -> str:
         """Builds the workflow with current system messages and saves it to a file."""
@@ -119,7 +119,7 @@ class Architect:
         output_path = os.path.join(self.output_dir, filename)
 
         builder = WorkflowBuilder(self.system_messages, self.structured_workflow, self.llm_config, self.workflow_id)
-        builder.build_and_validate()
+        builder.build_component_and_validate()
         builder.save_workflow_to_file(output_path)
         logger.info(f"Workflow saved to: {output_path}")
         return output_path
@@ -133,8 +133,8 @@ class Architect:
                             final accuracy, path to the saved file, and performance history.
         """
         logger.info("Step 1: Designing initial workflow from user query...")
-        expanded_workflow = self.expander.expand_workflow_query(self.user_query, prompts.nexus_guidelines)
-        self.structured_workflow = self.structurer.structure_workflow(expanded_workflow)
+        expanded_workflow = self.expander.decompose_and_plan_tasks(self.user_query, prompts.nexus_guidelines)
+        self.structured_workflow = self.structurer.reasoning_workflow_design(expanded_workflow)
 
         agents_names = [self.structured_workflow.main_supervisor.name] + [agent.name for agent in self.structured_workflow.agents]
         logger.info(f"Created agents: {', '.join(agents_names)}")
@@ -156,7 +156,6 @@ class Architect:
                                                                     self.workflow_id,
                                                                     iteration=i,
                                                                     is_factory=True)
-
             accuracy = evaluation_results['accuracy']
             final_accuracy = accuracy
 

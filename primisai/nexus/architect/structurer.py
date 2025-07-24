@@ -45,7 +45,7 @@ class WorkflowStructurer:
         with open(doc_path, "r", encoding="utf-8") as file:
             self.nexus_documentation = file.read()
 
-    def structure_workflow(self, expanded_workflow: str) -> WorkflowDefinition:
+    def reasoning_workflow_design(self, expanded_workflow: str) -> WorkflowDefinition:
         """
         Convert expanded workflow description into structured component definitions.
         
