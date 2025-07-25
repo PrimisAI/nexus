@@ -1,7 +1,24 @@
 # CHANGELOG
 
 
+## v0.8.1 (2025-07-25)
+
+### Bug Fixes
+
+* fix: upgraded dependency due to security concerns (#32)
+
+Minor fixes to `README` ([`7131f98`](https://github.com/PrimisAI/nexus/commit/7131f98a0782d38d799eb01ede8ce2ff1f04be2f))
+
+### Refactoring
+
+* refactor: function names in `Architect` components (#31) ([`96a9030`](https://github.com/PrimisAI/nexus/commit/96a9030258c130199095b46c582ce0a50f32d6f1))
+
+
 ## v0.8.0 (2025-07-18)
+
+### Chores
+
+* chore(release): 🚀 bump version to 0.8.0 ([`f7be90a`](https://github.com/PrimisAI/nexus/commit/f7be90a7ed0c55debdd8802e0b9a1e1320b7bb8c))
 
 ### Features
 
