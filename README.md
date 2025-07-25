@@ -1,5 +1,5 @@
 # PrimisAI Nexus
-[![arXiv](https://img.shields.io/badge/arXiv-2502.19091-b31b1b.svg)](https://arxiv.org/abs/2502.19091) [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/nexus-a-lightweight-and-scalable-multi-agent/code-generation-on-verilogeval)](https://paperswithcode.com/sota/code-generation-on-verilogeval?p=nexus-a-lightweight-and-scalable-multi-agent) [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/nexus-a-lightweight-and-scalable-multi-agent/code-generation-on-humaneval)](https://paperswithcode.com/sota/code-generation-on-humaneval?p=nexus-a-lightweight-and-scalable-multi-agent)
+[![arXiv](https://img.shields.io/badge/arXiv-2502.19091-b31b1b.svg)](https://arxiv.org/abs/2502.19091) [![arXiv](https://img.shields.io/badge/arXiv-2507.14393-b31b1b.svg)](https://arxiv.org/abs/2507.14393)
 
 ![Tests](https://github.com/PrimisAI/nexus/actions/workflows/tests.yaml/badge.svg) ![Continuous Delivery](https://github.com/PrimisAI/nexus/actions/workflows/cd.yaml/badge.svg) ![PyPI - Version](https://img.shields.io/pypi/v/primisai) [![PyPI Downloads](https://static.pepy.tech/badge/primisai)](https://pepy.tech/projects/primisai) ![Python Version from PEP 621 TOML](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FPrimisAI%2Fnexus%2Fmain%2Fpyproject.toml) ![GitHub License](https://img.shields.io/github/license/PrimisAI/nexus)
 
@@ -400,6 +400,17 @@ If you find Nexus useful, please consider citing our preprint.
   year={2025}
 }
 ```
+
+If you leveraged the Architect in your work, please consider citing our dedicated paper as well.
+```bibtex
+@article{sami2025adaptive,
+  title={Adaptive Multi-Agent Reasoning via Automated Workflow Generation},
+  author={Sami, Humza and ul Islam, Mubashir and Gaillardon, Pierre-Emmanuel and Tenace, Valerio},
+  journal={arXiv preprint arXiv:2507.14393},
+  year={2025}
+}
+```
+
 ## License
 
 This project is licensed under the MIT License.
