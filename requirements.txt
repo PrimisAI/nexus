@@ -1,6 +1,7 @@
-openai==1.66.3
-python-dotenv==1.0.1
-streamlit>=1.38.0
-pytest==8.3.4
-PyYAML==6.0.2
-mcp[cli]>=1.10.0
+openai>=1.66.3,<2.0.0     
+python-dotenv>=1.2.2    
+pydantic>=2.0.0
+tqdm>=4.66.0
+# pytest removed           # REMOVED: pytest==8.3.4 -> moved to pyproject.toml's [dev] extra, install via pip install -e ".[dev]"
+PyYAML>=6.0.3              
+mcp[cli]>=1.10.0,<2.0.0
