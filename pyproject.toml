@@ -1,37 +1,42 @@
 [build-system]
-requires = [ "setuptools>=77.0.0", "wheel", "build",] # Updated: setuptools>=42 -> setuptools>=77.0.0
+requires = [
+    "setuptools>=77.0.0",
+    "wheel",
+    "build",
+]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "primisai"
-version = "0.8.1"
+version = "1.0.0"
 description = "Nexus is a powerful and flexible Python package for managing AI agents and coordinating complex tasks using LLMs."
 requires-python = ">=3.10"
-license = "MIT"  
-
-#dependencies = [ "openai==1.66.3", "python-dotenv==1.0.1", "streamlit>=1.38.0", "pytest==8.3.4", "PyYAML==6.0.2", "mcp[cli]>=1.10.0",]
-
+license = "MIT"
 dependencies = [
-    "openai>=1.66.3,<2.0.0",           
-    "python-dotenv>=1.2.2",   
+    "openai>=1.66.3,<2.0.0",
+    "python-dotenv>=1.2.2",
     "pydantic>=2.0.0",
     "tqdm>=4.66.0",
-    "PyYAML>=6.0.3",           
+    "PyYAML>=6.0.3",
     "mcp[cli]>=1.10.0,<2.0.0",
 ]
-
-keywords = [ "AI", "LLM", "framework", "AI agents",]
-classifiers = [ "Programming Language :: Python :: 3", "Operating System :: OS Independent",]
-[[project.authors]]
-name = "PrimisAI"
-email = "info@primis.ai"
+keywords = [
+    "AI",
+    "LLM",
+    "framework",
+    "AI agents",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+authors = [
+    { name = "PrimisAI", email = "info@primis.ai" },
+]
 
 [project.readme]
 file = "README.md"
 content-type = "text/markdown"
-
-#[project.license]
-#text = "MIT"
 
 [project.urls]
 changelog = "https://github.com/PrimisAI/nexus/blob/main/CHANGELOG.md"
@@ -40,16 +45,24 @@ issues = "https://github.com/PrimisAI/nexus/issues"
 repository = "https://github.com/PrimisAI/nexus.git"
 
 [project.optional-dependencies]
-dev = [ "pytest>=9.0.3",]
+dev = [
+    "pytest>=9.0.3",
+]
 
 [tool.setuptools]
 include-package-data = true
 
+[tool.setuptools.packages.find]
+exclude = [
+    "tests*",
+]
+
 [tool.semantic_release]
-version_variables = [ "primisai/__init__.py:__version__",]
-version_toml = [ "pyproject.toml:project.version",]
+version_variables = [
+    "primisai/__init__.py:__version__",
+]
+version_toml = [
+    "pyproject.toml:project.version",
+]
 version_source = "commit"
 commit_message = "chore(release): 🚀 bump version to {version}"
-
-[tool.setuptools.packages.find]
-exclude = [ "tests*",]
