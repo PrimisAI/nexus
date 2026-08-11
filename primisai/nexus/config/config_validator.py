@@ -26,7 +26,7 @@ class ConfigValidator:
     """
 
     @staticmethod
-    def validate(config: Dict[str, Any]) -> None:
+    def validate(config: dict[str, Any]) -> None:
         """
         Validate the entire configuration dictionary.
 
@@ -39,7 +39,7 @@ class ConfigValidator:
         ConfigValidator._validate_supervisor(config.get('supervisor', {}), is_root=True)
 
     @staticmethod
-    def _validate_supervisor(supervisor: Dict[str, Any], is_root: bool = False) -> None:
+    def _validate_supervisor(supervisor: dict[str, Any], is_root: bool = False) -> None:
         """
         Validate a supervisor configuration.
 
@@ -80,7 +80,7 @@ class ConfigValidator:
                 raise ConfigValidationError(f"Invalid type for child: {child['type']}")
 
     @staticmethod
-    def _validate_agent(agent: Dict[str, Any]) -> None:
+    def _validate_agent(agent: dict[str, Any]) -> None:
         """
         Validate an agent configuration.
 
@@ -123,7 +123,7 @@ class ConfigValidator:
         ConfigValidator._validate_tools(agent.get('tools', []))
 
     @staticmethod
-    def _validate_llm_config(llm_config: Dict[str, Any]) -> None:
+    def _validate_llm_config(llm_config: dict[str, Any]) -> None:
         """
         Validate the LLM (Language Model) configuration.
 
@@ -139,7 +139,7 @@ class ConfigValidator:
                 raise ConfigValidationError(f"Missing required field '{field}' in llm_config")
 
     @staticmethod
-    def _validate_tools(tools: List[Dict[str, Any]]) -> None:
+    def _validate_tools(tools: list[dict[str, Any]]) -> None:
         """
         Validate the list of tools in an agent's configuration.
 

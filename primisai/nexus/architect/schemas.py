@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel,Field
 from typing import List, Optional
 
 # Tool Schema
@@ -9,8 +9,8 @@ class ParameterProperty(BaseModel):
 
 class ToolParameters(BaseModel):
     type: str
-    properties: List[ParameterProperty]
-    required: List[str]
+    properties: list[ParameterProperty]
+    required: list[str]
 
 class ToolFunctionDef(BaseModel):
     name: str
@@ -24,7 +24,7 @@ class ToolMetadata(BaseModel):
 class Tool(BaseModel):
     metadata: ToolMetadata 
     implementation: str
-    validation_constraints: List[str]
+    validation_constraints: list[str]
 
 # Agent Schema
 class AgentDefinition(BaseModel):
@@ -32,22 +32,22 @@ class AgentDefinition(BaseModel):
     system_message: str
     use_tools: bool
     keep_history: bool
-    tools: List[Tool]
-    output_schema: Optional[str] = None
+    tools: list[Tool] = Field(default_factory=list) 
+    output_schema: str | None = None
     strict: bool = False
-    validation_constraints: List[str]
+    validation_constraints: list[str]
 
 # Supervisor Schema
 class SupervisorDefinition(BaseModel):
     name: str
     is_assistant: bool
     system_message: str
-    managed_agents: List[str]
-    managed_assistant_supervisors: List[str]
-    validation_constraints: List[str]
+    managed_assistant_supervisors: list[str]
+    managed_agents: list[str] = Field(default_factory=list) 
+    validation_constraints: list[str]
 
 # Complete Workflow Schema
 class WorkflowDefinition(BaseModel):
     main_supervisor: SupervisorDefinition
-    assistant_supervisors: List[SupervisorDefinition]
-    agents: List[AgentDefinition]
+    assistant_supervisors: list[SupervisorDefinition]
+    agents: list[AgentDefinition]

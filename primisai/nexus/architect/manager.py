@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 from primisai.nexus.architect.expander import WorkflowExpander
 from primisai.nexus.architect.structurer import WorkflowStructurer
 from primisai.nexus.architect.builder import WorkflowBuilder
-from primisai.nexus.architect.prompter import Prompter
+from primisai.nexus.architect.prompter import Prompter, extract_system_messages
 from primisai.nexus.architect.evaluator import Evaluator
 from primisai.nexus.architect import prompts
 
@@ -27,7 +27,7 @@ class Architect:
     def __init__(self,
                  user_query: str,
                  benchmark_path: str,
-                 llm_config: Dict[str, str],
+                 llm_config: dict[str, str],
                  output_dir: str = "./optimized_workflows",
                  workflow_name: str = "optimized_workflow",
                  subset_size: int = 10,
@@ -72,12 +72,12 @@ class Architect:
         self.expander = WorkflowExpander(self.llm_config)
         self.structurer = WorkflowStructurer(self.llm_config)
         self.evaluator = Evaluator(self.llm_config, self.benchmark_path, subset_size=self.subset_size)
-        self.prompter: Optional[Prompter] = None  # Initialized after agents are known
+        self.prompter: Prompter | None = None  # Initialized after agents are known
 
         # --- Internal State ---
         self.structured_workflow = None
-        self.system_messages: Dict[str, str] = {}
-        self.performance_history: List[Dict[str, Any]] = []
+        self.system_messages: dict[str, str] = {}
+        self.performance_history: list[dict[str, Any]] = []
         self.workflow_id = self._generate_workflow_id()
 
         os.makedirs(self.output_dir, exist_ok=True)
@@ -88,23 +88,6 @@ class Architect:
         timestamp = datetime.datetime.now().strftime("%d-%m-%Y__%Hh-%Mmin")
         benchmark_name = os.path.splitext(os.path.basename(self.benchmark_path))[0]
         return f"{self.workflow_name}_subset={self.subset_size}_iter={self.max_iterations}_{benchmark_name}_{timestamp}"
-
-    @staticmethod
-    def _extract_system_messages(system_messages_obj: Any, agents_names: List[str]) -> Dict[str, str]:
-        """
-        Extracts system messages into a dictionary, handling both dict and Pydantic objects.
-        """
-        if isinstance(system_messages_obj, dict):
-            return system_messages_obj
-
-        system_messages_dict = {}
-        for agent_name in agents_names:
-            try:
-                system_messages_dict[agent_name] = getattr(system_messages_obj, agent_name)
-            except AttributeError:
-                logger.warning(f"Could not get system message for agent '{agent_name}'. Using default.")
-                system_messages_dict[agent_name] = "You are a helpful AI assistant."
-        return system_messages_dict
 
     def _create_supervisor_instance(self, workflow_id: str, unique_suffix: int):
         """Factory function to create a supervisor instance for evaluation."""
@@ -124,7 +107,7 @@ class Architect:
         logger.info(f"Workflow saved to: {output_path}")
         return output_path
 
-    def build_and_optimize(self) -> Dict[str, Any]:
+    def build_and_optimize(self) -> dict[str, Any]:
         """
         Executes the full workflow design and optimization process.
 
@@ -142,7 +125,7 @@ class Architect:
         logger.info("Step 2: Generating initial system prompts for all agents...")
         self.prompter = Prompter(agents_names, self.llm_config)
         initial_messages_obj = self.prompter.generate_warmup_system_messages(self.user_query, self.structured_workflow)
-        self.system_messages = self._extract_system_messages(initial_messages_obj, agents_names)
+        self.system_messages = extract_system_messages(initial_messages_obj, agents_names)
 
         logger.info(f"Step 3: Starting optimization loop for {self.max_iterations} iterations...")
         final_accuracy = 0.0

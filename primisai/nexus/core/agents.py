@@ -6,7 +6,10 @@ with additional features like tool usage and chat history management.
 """
 
 import json, asyncio
+import logging
+import threading
 from typing import List, Dict, Optional, Any
+from concurrent.futures import ThreadPoolExecutor
 from openai.types.chat import ChatCompletionMessage
 from primisai.nexus.core.ai import AI
 from primisai.nexus.history import HistoryManager, EntityType
@@ -14,7 +17,32 @@ from primisai.nexus.utils import Debugger
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
+logger = logging.getLogger(__name__)
 
+# and any future v2 migration checklist can compare against them.
+# _MCP_V1_IMPORTS_REQUIRED = (
+#     ("mcp", ["ClientSession", "StdioServerParameters"]),
+#     ("mcp.client.sse", ["sse_client"]),
+#     ("mcp.client.stdio", ["stdio_client"]),
+# )
+
+try:
+    from importlib.metadata import version as _mcp_pkg_version
+
+    def _mcp_major_version() -> int:
+        try:
+            return int(_mcp_pkg_version("mcp").split(".", 1)[0])
+        except Exception:
+            return 1
+
+    if _mcp_major_version() >= 2:
+        raise ImportError(
+            "primisai (Nexus) has not yet been migrated to the MCP SDK v2 API.\n"
+            "  The following v1 imports must be ported BEFORE upgrading to mcp>=2:\n"
+            "  Please pin `mcp[cli]>=1.10.0,<2.0.0` in the meantime, or see the\n"
+        )
+except Exception:
+    pass
 
 class Agent(AI):
     """
@@ -27,14 +55,14 @@ class Agent(AI):
 
     def __init__(self,
                  name: str,
-                 llm_config: Dict[str, str],
-                 workflow_id: Optional[str] = None,
-                 tools: Optional[List[Dict[str, Any]]] = None,
-                 system_message: Optional[str] = None,
+                 llm_config: dict[str, str],
+                 workflow_id: str | None = None,
+                 tools: list[dict[str, Any]] | None = None,
+                 system_message: str | None = None,
                  use_tools: bool = False,
                  keep_history: bool = True,
-                 mcp_servers: Optional[List[Dict[str, Any]]] = None,
-                 output_schema: Optional[Dict[str, Any]] = None,
+                 mcp_servers: list[dict[str, Any]] | None = None,
+                 output_schema: dict[str, Any] | None = None,
                  strict: bool = False):
         """
         Initialize the Agent instance.
@@ -72,16 +100,34 @@ class Agent(AI):
         self.history_manager = None
         self.debugger = Debugger(name=self.name, workflow_id=None)
         self.debugger.start_session()
-        self.chat_history: List[Dict[str, str]] = []
+        self.chat_history: list[dict[str, str]] = []
         self.mcp_servers = mcp_servers or []
         self._mcp_tool_names = set()
         self.output_schema = output_schema
         self.strict = strict
+        self._mcp_sessions: Dict[str, Dict[str, Any]] = {}
+        self._mcp_loop: asyncio.AbstractEventLoop | None = None
+        self._mcp_loop_thread: threading.Thread | None = None
+        self._mcp_loop_ready = threading.Event()
+
+        
 
         if system_message:
             self.set_system_message(system_message)
-        
-        asyncio.run(self._load_mcp_tools())
+            #asyncio.run(self._load_mcp_tools()) #Updated
+        # Safe async initialization
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_running():
+                # Event loop already running (Jupyter/notebook/async app).
+                # Block until tools are loaded by running asyncio.run in a
+                # worker thread so we don't interfere with the existing loop.
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    pool.submit(asyncio.run, self._load_mcp_tools()).result()
+            else:
+                loop.run_until_complete(self._load_mcp_tools())
+        except RuntimeError:
+            asyncio.run(self._load_mcp_tools())
 
     def set_workflow_id(self, workflow_id: str) -> None:
         """
@@ -156,7 +202,7 @@ class Agent(AI):
                 self.debugger.log("Schema enforcement failed", level="error")
                 return response
 
-    def chat(self, query: str, sender_name: Optional[str] = None) -> str:
+    def chat(self, query: str, sender_name: str | None = None) -> str:
         """
         Process a chat interaction with the agent.
 
@@ -191,10 +237,13 @@ class Agent(AI):
 
         while True:
             try:
+                # Check if we actually have tools before enabling use_tools
+                has_tools = bool(self.tools)
+                
                 response = self.generate_response(
                     self.chat_history,
-                    tools=[tool['metadata'] for tool in self.tools],
-                    use_tools=self.use_tools
+                    tools=[tool['metadata'] for tool in self.tools] if has_tools else None,
+                    use_tools=self.use_tools and has_tools
                 ).choices[0]
 
                 if not response.finish_reason == "tool_calls":
@@ -214,53 +263,57 @@ class Agent(AI):
                         )
                     return user_query_answer
                 
-                tool_call = response.message.tool_calls[0]
+                all_tool_calls = response.message.tool_calls
                 tool_msg = {
                     "role": "assistant",
                     "content": None,
-                    "tool_calls": [{
-                        'id': tool_call.id,
-                        'type': 'function',
-                        'function': {
-                            'name': tool_call.function.name,
-                            'arguments': tool_call.function.arguments
+                    "tool_calls": [
+                        {
+                            'id': tc.id,
+                            'type': 'function',
+                            'function': {
+                                'name': tc.function.name,
+                                'arguments': tc.function.arguments
+                            }
                         }
-                    }]
+                        for tc in all_tool_calls
+                    ]
                 }
                 self.chat_history.append(tool_msg)
-                
-                tool_msg_id = None
-                if self.history_manager:
-                    tool_msg_id = self.history_manager.append_message(
-                        message=tool_msg,
-                        sender_type=EntityType.AGENT,
-                        sender_name=self.name,
-                        parent_id=query_msg_id,
-                        tool_call_id=tool_call.id
-                    )
 
-                self._process_tool_call(response.message, tool_msg_id)
+                for tool_call in all_tool_calls:
+                    tool_msg_id = None
+                    if self.history_manager:
+                        tool_msg_id = self.history_manager.append_message(
+                            message=tool_msg,
+                            sender_type=EntityType.AGENT,
+                            sender_name=self.name,
+                            parent_id=query_msg_id,
+                            tool_call_id=tool_call.id
+                        )
+
+                    self._process_tool_call(tool_call, tool_msg_id)
 
             except Exception as e:
                 error_msg = f"Error in chat processing: {str(e)}"
                 self.debugger.log(error_msg)
                 raise RuntimeError(error_msg)
 
-    def _process_tool_call(self, message: ChatCompletionMessage, parent_msg_id: Optional[str] = None) -> None:
+    def _process_tool_call(self, tool_call, parent_msg_id: str | None = None) -> None:
         """
-        Process a tool call from the chat response.
+        Process a single tool call from the chat response.
 
         Args:
-            message (ChatCompletionMessage): The message containing the tool call.
+            tool_call: A single tool call object (from ChatCompletionMessage.tool_calls).
             parent_msg_id (Optional[str]): ID of the parent message in history.
 
         Raises:
             ValueError: If the specified tool is not found or if there's an error in processing arguments.
         """
-        if not hasattr(message, 'tool_calls') or not message.tool_calls:
-            raise ValueError("Message does not contain tool calls")
-        
-        function_call = message.tool_calls[0]
+        if tool_call is None:
+            raise ValueError("Tool call is None")
+
+        function_call = tool_call
         target_tool_name = function_call.function.name
         
         self.debugger.log(f"Initiating tool call: {target_tool_name}")
@@ -284,11 +337,11 @@ class Agent(AI):
         tool_function = target_tool['tool']
         
         try:
-            if hasattr(tool_function, '__kwdefaults__'):
+            try:
                 tool_feedback = tool_function(**tool_arguments)
-            else:
+            except TypeError:
                 tool_feedback = tool_function(tool_arguments)
-            
+                
             self.debugger.log(f"Tool execution successful")
             self.debugger.log(f"Tool response: {str(tool_feedback)}")
             
@@ -312,7 +365,83 @@ class Agent(AI):
             error_msg = f"Tool execution failed: {str(e)}"
             self.debugger.log(error_msg, level="error")
             raise RuntimeError(error_msg) from e
-    
+
+    def _ensure_mcp_loop(self) -> asyncio.AbstractEventLoop:
+        if self._mcp_loop is not None:
+            return self._mcp_loop
+
+        def _thread_main():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            self._mcp_loop = loop
+            self._mcp_loop_ready.set()
+            try:
+                loop.run_forever()
+            finally:
+                loop.close()
+
+        self._mcp_loop_thread = threading.Thread(target=_thread_main, daemon=True)
+        self._mcp_loop_thread.start()
+        self._mcp_loop_ready.wait()
+        return self._mcp_loop
+
+    def _run_in_mcp_loop(self, coro, timeout=None):
+        loop = self._ensure_mcp_loop()
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        return future.result(timeout=timeout)
+
+    async def _a_close_all_mcp_sessions(self):
+        for key, entry in list(self._mcp_sessions.items()):
+            session = entry.get("session")
+            streams = entry.get("streams")
+            ttype = entry.get("type")
+            try:
+                if session is not None:
+                    try:
+                        await session.__aexit__(None, None, None)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                if streams is not None:
+                    if ttype == "stdio":
+                        try:
+                            await stdio_client.__aexit__(streams, None, None, None)
+                        except Exception:
+                            try:
+                                stdio, write = streams
+                                try:
+                                    stdio.close()
+                                except Exception:
+                                    pass
+                                try:
+                                    write.close()
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+                    else:
+                        try:
+                            await sse_client.__aexit__(streams, None, None, None)
+                        except Exception:
+                            try:
+                                reader, writer = streams
+                                try:
+                                    writer.close()
+                                    await writer.wait_closed()
+                                except Exception:
+                                    pass
+                                try:
+                                    reader.close()
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+        self._mcp_sessions.clear()
+
     async def _load_mcp_tools(self):
         """
         Discover and register tools from all MCP servers configured in self.mcp_servers.
@@ -320,12 +449,14 @@ class Agent(AI):
         This method connects to each specified MCP server using the configured transport
         (either "sse" or "stdio"), retrieves the available tools, converts their schemas
         to OpenAI-compatible format, and registers proxy functions for each tool. It
-        removes any previously loaded MCP tools before loading new ones.
+        removes any previously loaded MCP tools before loading new ones. Sessions are
+        kept open in a persistent cache so subsequent tool calls don't reconnect.
 
         Raises:
             ValueError: If an unknown transport type is encountered in the MCP server config.
             Exception: For any network, process, or protocol-level error during tool discovery.
         """
+        await self._a_close_all_mcp_sessions()
         self._remove_all_mcp_tools()
         self._mcp_tool_names = set()
         for server in self.mcp_servers:
@@ -336,26 +467,40 @@ class Agent(AI):
                     auth_token = server.get("auth_token")
                     endpoint = url  # Use the user-supplied URL exactly as written
                     headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
-                    async with sse_client(endpoint, headers=headers) as streams:
-                        async with ClientSession(*streams) as session:
-                            await session.initialize()
-                            ntools_resp = await session.list_tools()
-                            ntools = ntools_resp.tools
-                            for tool in ntools:
-                                openai_tool_meta = self._convert_mcp_tool_to_openai(tool)
-                                tname = openai_tool_meta["function"]["name"]
-                                proxy = self._build_mcp_tool_proxy(
-                                    transport_type="sse",
-                                    conf={"url": url, "auth_token": auth_token},
-                                    tool_name=tname
-                                )
-                                tool_dict = {
-                                    "tool": proxy,
-                                    "metadata": openai_tool_meta,
-                                    "_mcp_tool": True
-                                }
-                                self.tools.append(tool_dict)
-                                self._mcp_tool_names.add(tname)
+                    streams = await sse_client(endpoint, headers=headers).__aenter__()
+                    session = ClientSession(*streams)
+                    await session.__aenter__()
+                    try:
+                        await session.initialize()
+                        key = f"{ttype}:{url}::{auth_token or ''}"
+                        self._mcp_sessions[key] = {"session": session, "streams": streams, "type": ttype}
+                        ntools_resp = await session.list_tools()
+                        ntools = ntools_resp.tools
+                        for tool in ntools:
+                            openai_tool_meta = self._convert_mcp_tool_to_openai(tool)
+                            tname = openai_tool_meta["function"]["name"]
+                            proxy = self._build_mcp_tool_proxy(
+                                transport_type="sse",
+                                conf={"url": url, "auth_token": auth_token, "_session_key": key},
+                                tool_name=tname
+                            )
+                            tool_dict = {
+                                "tool": proxy,
+                                "metadata": openai_tool_meta,
+                                "_mcp_tool": True
+                            }
+                            self.tools.append(tool_dict)
+                            self._mcp_tool_names.add(tname)
+                    except Exception:
+                        try:
+                            await session.__aexit__(None, None, None)
+                        except Exception:
+                            pass
+                        try:
+                            await sse_client.__aexit__(streams, None, None, None)
+                        except Exception:
+                            pass
+                        raise
                 elif ttype == "stdio":
                     script_path = server["script_path"]
                     server_params = StdioServerParameters(
@@ -363,33 +508,48 @@ class Agent(AI):
                         args=[script_path],
                         env=None
                     )
-                    async with stdio_client(server_params) as (stdio, write):
-                        async with ClientSession(stdio, write) as session:
-                            await session.initialize()
-                            ntools_resp = await session.list_tools()
-                            ntools = ntools_resp.tools
-                            for tool in ntools:
-                                openai_tool_meta = self._convert_mcp_tool_to_openai(tool)
-                                tname = openai_tool_meta["function"]["name"]
-                                proxy = self._build_mcp_tool_proxy(
-                                    transport_type="stdio",
-                                    conf={"script_path": script_path},
-                                    tool_name=tname
-                                )
-                                tool_dict = {
-                                    "tool": proxy,
-                                    "metadata": openai_tool_meta,
-                                    "_mcp_tool": True
-                                }
-                                self.tools.append(tool_dict)
-                                self._mcp_tool_names.add(tname)
+                    streams = await stdio_client(server_params).__aenter__()
+                    stdio, write = streams
+                    session = ClientSession(stdio, write)
+                    await session.__aenter__()
+                    try:
+                        await session.initialize()
+                        key = f"{ttype}:{script_path}"
+                        self._mcp_sessions[key] = {"session": session, "streams": streams, "type": ttype}
+                        ntools_resp = await session.list_tools()
+                        ntools = ntools_resp.tools
+                        for tool in ntools:
+                            openai_tool_meta = self._convert_mcp_tool_to_openai(tool)
+                            tname = openai_tool_meta["function"]["name"]
+                            proxy = self._build_mcp_tool_proxy(
+                                transport_type="stdio",
+                                conf={"script_path": script_path, "_session_key": key},
+                                tool_name=tname
+                            )
+                            tool_dict = {
+                                "tool": proxy,
+                                "metadata": openai_tool_meta,
+                                "_mcp_tool": True
+                            }
+                            self.tools.append(tool_dict)
+                            self._mcp_tool_names.add(tname)
+                    except Exception:
+                        try:
+                            await session.__aexit__(None, None, None)
+                        except Exception:
+                            pass
+                        try:
+                            await stdio_client.__aexit__((stdio, write), None, None, None)
+                        except Exception:
+                            pass
+                        raise
                 else:
                     raise ValueError(f"[MCP] Unknown transport type: {ttype}")
             except Exception as e:
-                print(f"[MCP] Error loading tools from {server}: {e}")
+                logger.warning(f"[MCP] Error loading tools from {server}: {e}")
         self.tools_metadata = [tool['metadata'] for tool in self.tools]
 
-    def _convert_mcp_tool_to_openai(self, tool) -> Dict[str, Any]:
+    def _convert_mcp_tool_to_openai(self, tool) -> dict[str, Any]:
         """
         Convert an MCP tool object to an OpenAI-compatible function/tool schema.
 
@@ -420,68 +580,49 @@ class Agent(AI):
         # Extract properties and required fields from MCP input schema
         if hasattr(tool, 'inputSchema') and tool.inputSchema:
             schema = tool.inputSchema
-            property_names = []
             properties = schema.get("properties", {})
             for prop_name, prop_details in properties.items():
                 prop_copy = {k: v for k, v in prop_details.items() if k != 'default'}
                 openai_tool["function"]["parameters"]["properties"][prop_name] = prop_copy
-                property_names.append(prop_name)
-            openai_tool["function"]["parameters"]["required"] = property_names
+            if schema.get("required") is not None:
+                openai_tool["function"]["parameters"]["required"] = list(schema["required"])
         return openai_tool
             
     def _build_mcp_tool_proxy(self, transport_type, conf, tool_name):
         """
         Create a synchronous Python proxy function for invoking an MCP tool.
 
-        Depending on the transport type ("sse" or "stdio"), this factory builds a proxy
-        function that accepts tool arguments as keyword arguments, then manages the
-        necessary asynchronous communication to invoke the MCP tool and retrieve the result.
+        Uses a persistent session (kept alive in a background asyncio event loop
+        on a dedicated thread) so repeated tool calls reuse the same transport
+        and ClientSession rather than reconnecting + re-initializing each call.
 
         Args:
             transport_type (str): The MCP transport type ("sse" or "stdio").
-            conf (dict): Connection configuration dictionary (e.g., URL or script_path).
+            conf (dict): Connection configuration dictionary, carrying the
+                `_session_key` used to look up the already-opened session.
             tool_name (str): Name of the tool to invoke on the MCP server.
 
         Returns:
-            Callable: A Python function that accepts keyword arguments and returns the tool's result.
-
-        Raises:
-            Exception: If calling the MCP tool fails for transport or invocation reasons.
+            Callable: A Python function that accepts keyword arguments and
+                returns the tool's result. Uses the persistent session stored
+                under the `_session_key` in `self._mcp_sessions`.
         """
+        session_key = conf.get("_session_key")
+
         def proxy(**kwargs):
-            async def _call_sse():
-                url = conf["url"]
-                auth_token = conf.get("auth_token")
-                endpoint = url  # Use the user-supplied URL exactly as written
-                headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
-                async with sse_client(endpoint, headers=headers) as streams:
-                    async with ClientSession(*streams) as session:
-                        await session.initialize()
-                        result = await session.call_tool(tool_name, arguments=kwargs)
-                        if hasattr(result, "content") and result.content:
-                            return result.content[0].text
-                        return str(result)
-            async def _call_stdio():
-                script_path = conf["script_path"]
-                server_params = StdioServerParameters(
-                    command="python",
-                    args=[script_path],
-                    env=None
-                )
-                async with stdio_client(server_params) as (stdio, write):
-                    async with ClientSession(stdio, write) as session:
-                        await session.initialize()
-                        result = await session.call_tool(tool_name, arguments=kwargs)
-                        if hasattr(result, "content") and result.content:
-                            return result.content[0].text
-                        return str(result)
+            async def _call_with_session():
+                entry = self._mcp_sessions.get(session_key)
+                if entry is None:
+                    raise RuntimeError(
+                        f"[MCP] Persistent session for key {session_key!r} not available"
+                    )
+                session = entry["session"]
+                result = await session.call_tool(tool_name, arguments=kwargs)
+                if hasattr(result, "content") and result.content:
+                    return result.content[0].text
+                return str(result)
             try:
-                if transport_type == "sse":
-                    return asyncio.run(_call_sse())
-                elif transport_type == "stdio":
-                    return asyncio.run(_call_stdio())
-                else:
-                    raise ValueError(f"Unknown MCP transport {transport_type}")
+                return self._run_in_mcp_loop(_call_with_session())
             except Exception as e:
                 return f"[MCP] Tool '{tool_name}' call failed: {e}"
         return proxy
@@ -493,7 +634,7 @@ class Agent(AI):
         self.tools = [t for t in self.tools if not t.get('_mcp_tool', False)]
         self._mcp_tool_names = set()
         
-    def get_chat_history(self) -> List[Dict[str, str]]:
+    def get_chat_history(self) -> list[dict[str, str]]:
         """
         Get the current chat history.
 
@@ -508,12 +649,16 @@ class Agent(AI):
 
         This method removes all previously registered MCP tools, re-connects to all configured
         MCP servers, and loads the updated tool lists into the agent. Call this method if you
-        add, remove, or update tools on any MCP server during runtime.
+        add, remove, or update tools on any MCP server during runtime. Runs on the persistent
+        background MCP loop so sessions stay bound to the owning event loop.
 
         Raises:
             Exception: For any underlying error in the discovery or registration process.
         """
-        asyncio.run(self._load_mcp_tools())
+        if self._mcp_loop is not None:
+            self._run_in_mcp_loop(self._load_mcp_tools())
+        else:
+            asyncio.run(self._load_mcp_tools())
         
     def _reset_chat_history(self) -> None:
         """Reset chat history to initial state (system message only)."""

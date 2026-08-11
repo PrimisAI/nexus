@@ -22,7 +22,7 @@ class AgentFactory:
     """
 
     @staticmethod
-    def create_from_config(config: Dict[str, Any]) -> Supervisor:
+    def create_from_config(config: dict[str, Any]) -> Supervisor:
         """
         Create a Supervisor with its entire hierarchy from a configuration dictionary.
 
@@ -47,9 +47,9 @@ class AgentFactory:
     
     @staticmethod
     def _create_supervisor(
-        supervisor_config: Dict[str, Any], 
+        supervisor_config: dict[str, Any], 
         is_root: bool = False,
-        workflow_id: Optional[str] = None
+        workflow_id: str | None = None
     ) -> Supervisor:
         """
         Create a Supervisor instance and its children from a configuration dictionary.
@@ -84,7 +84,7 @@ class AgentFactory:
         return supervisor
 
     @staticmethod
-    def _create_agent(agent_config: Dict[str, Any]) -> Agent:
+    def _create_agent(agent_config: dict[str, Any]) -> Agent:
         """
         Create an Agent instance from a configuration dictionary.
 
@@ -111,7 +111,7 @@ class AgentFactory:
         return Agent(**agent_params)
 
     @staticmethod
-    def _create_tools(tools_config: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _create_tools(tools_config: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Create a list of tool configurations from the provided tool configs.
 

@@ -21,7 +21,7 @@ Note:
 import os, collections
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Union
 from pathlib import Path
 from enum import Enum
@@ -73,12 +73,12 @@ class HistoryManager:
             )
 
     def append_message(self,
-                    message: Dict[str, Any],
+                    message: dict[str, Any],
                     sender_type: EntityType,
                     sender_name: str,
-                    parent_id: Optional[str] = None,
-                    tool_call_id: Optional[str] = None,
-                    supervisor_chain: Optional[List[str]] = None) -> str:
+                    parent_id: str | None = None,
+                    tool_call_id: str | None = None,
+                    supervisor_chain: list[str] | None = None) -> str:
         """
         Append a message to the conversation history.
         
@@ -115,7 +115,7 @@ class HistoryManager:
         # Prepare entry with metadata
         entry = {
             'message_id': message_id,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'workflow_id': self.workflow_id,
             'sender_type': sender_type,
             'sender_name': sender_name,
@@ -131,7 +131,7 @@ class HistoryManager:
 
         return message_id
 
-    def load_chat_history(self, entity_name: str) -> List[Dict[str, Any]]:
+    def load_chat_history(self, entity_name: str) -> list[dict[str, Any]]:
         """
         Load and reconstruct the LLM-compatible conversation history for a given entity (supervisor or agent).
 
@@ -155,7 +155,7 @@ class HistoryManager:
         if not self.history_file.exists():
             return []
         
-        with open(self.history_file, "r") as f:
+        with open(self.history_file) as f:
             all_msgs = [json.loads(line) for line in f]
 
         system = next(
@@ -218,7 +218,7 @@ class HistoryManager:
 
         return history
 
-    def get_frontend_history(self) -> List[Dict[str, Any]]:
+    def get_frontend_history(self) -> list[dict[str, Any]]:
         """
         Get complete conversation history formatted for frontend display.
 
@@ -232,7 +232,7 @@ class HistoryManager:
             return []
 
         messages = []
-        with open(self.history_file, 'r') as f:
+        with open(self.history_file) as f:
             messages = [json.loads(line) for line in f]
 
         # Add delegation chain information for display
@@ -252,7 +252,7 @@ class HistoryManager:
 
         return self._build_conversation_thread(messages)
 
-    def _format_for_chat_history(self, msg: Dict[str, Any]) -> Dict[str, Any]:
+    def _format_for_chat_history(self, msg: dict[str, Any]) -> dict[str, Any]:
         """
         Format a raw persisted message as an LLM-compatible chat turn.
 
@@ -299,7 +299,7 @@ class HistoryManager:
         if not self.history_file.exists():
             return False
             
-        with open(self.history_file, 'r') as f:
+        with open(self.history_file) as f:
             for line in f:
                 msg = json.loads(line)
                 if (msg['role'] == 'system' and 
@@ -308,7 +308,7 @@ class HistoryManager:
                     return True
         return False
 
-    def _sort_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _sort_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Sort messages based on their relationships and timestamps.
 
@@ -320,7 +320,7 @@ class HistoryManager:
         """
         return sorted(messages, key=lambda x: x.get('timestamp', ''))
 
-    def _build_conversation_thread(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _build_conversation_thread(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Build a threaded conversation structure.
 
@@ -353,7 +353,7 @@ class HistoryManager:
             self.history_file.unlink()
             self.history_file.touch()
 
-    def get_messages_by_entity(self, entity_name: str) -> List[Dict[str, Any]]:
+    def get_messages_by_entity(self, entity_name: str) -> list[dict[str, Any]]:
         """
         Get all messages related to a specific entity.
 
@@ -364,7 +364,7 @@ class HistoryManager:
             List[Dict[str, Any]]: All messages related to the entity
         """
         messages = []
-        with open(self.history_file, 'r') as f:
+        with open(self.history_file) as f:
             for line in f:
                 msg = json.loads(line)
                 if msg['sender_name'] == entity_name:

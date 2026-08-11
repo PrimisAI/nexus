@@ -18,7 +18,7 @@ class WorkflowStructurer:
     a "Builder" component, which then translates the structure into executable code.
     """
 
-    def __init__(self, llm_config: Dict[str, str]):
+    def __init__(self, llm_config: dict[str, str]):
         """
         Initializes the WorkflowStructurer instance.
 
@@ -42,7 +42,7 @@ class WorkflowStructurer:
         curr_dir = os.path.dirname(os.path.abspath(__file__))
         doc_path = os.path.join(curr_dir, "NEXUS_DOCUMENTATION.md")
 
-        with open(doc_path, "r", encoding="utf-8") as file:
+        with open(doc_path, encoding="utf-8") as file:
             self.nexus_documentation = file.read()
 
     def reasoning_workflow_design(self, expanded_workflow: str) -> WorkflowDefinition:
@@ -55,22 +55,24 @@ class WorkflowStructurer:
         Returns:
             WorkflowDefinition: Structured workflow components
         """
+        #Merge Duplicate System Messages :
+        system_content = (
+            "You are a workflow structure expert. Your task is to convert "
+            "the expanded workflow description into structured component "
+            "definitions following the provided schema. Include validation "
+            "constraints for each component. Don't Use Sub Supervisors.\n\n"
+            f"Nexus Documentation:\n\n{self.nexus_documentation}\n\n"
+            "Based on the examples provided in the Nexus documentation, "
+            "please structure the expanded workflow description into "
+            "component definitions. Include supervisors, agents, and tools. "
+            "Also, add validation constraints for each component."
+        )
+
         messages = [{
-            "role":
-                "system",
-            "content": ("You are a workflow structure expert. Your task is to convert "
-                        "the expanded workflow description into structured component "
-                        "definitions following the provided schema. Include validation "
-                        "constraints for each component. Don't Use Sub Supervisors.")
+            "role": "system",
+            "content": system_content
         }, {
-            "role":
-                "system",
-            "content": (f"Nexus Documentation:\n\n {self.nexus_documentation}"
-                        "Based on the examples provided in the Nexus documentation, "
-                        "please structure the expanded workflow description into "
-                        "component definitions. Include supervisors, agents, and tools. "
-                        "Also, add validation constraints for each component.")
-        }, {
+
             "role":
                 "user",
             "content": (
@@ -82,11 +84,27 @@ class WorkflowStructurer:
                 "names of components. Add a proper (detailed) system messgages for all the components. Detailing all the details. Covering all the points. USE same system messages provided in query. DONT change them"
             )
         }]
-
         try:
-            completion = self.ai.client.beta.chat.completions.parse(messages=messages,
-                                                                    response_format=WorkflowDefinition,
-                                                                    model=self.llm_config["model"])
-            return completion.choices[0].message.parsed
+            completion = self.ai.client.beta.chat.completions.parse(
+                messages=messages,
+                response_format=WorkflowDefinition,
+                model=self.llm_config["model"],
+            )
+            message = completion.choices[0].message
+
+            # Check if the model refused to answer
+            if getattr(message, "refusal", None):
+                raise ValueError(
+                    f"Model refused to generate structure: {message.refusal}"
+                )
+
+            # Ensure parsed output exists
+            if not message.parsed:
+                raise ValueError(
+                    "Failed to parse workflow structure from response."
+                )
+
+            return message.parsed
         except Exception as e:
             raise Exception(f"Error in workflow structuring: {str(e)}")
+        
