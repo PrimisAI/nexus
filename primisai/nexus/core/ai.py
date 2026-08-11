@@ -4,9 +4,30 @@ AI module for handling interactions with OpenAI's API.
 This module provides a base AI class for generating responses using OpenAI's chat completions.
 """
 
-import openai
-from typing import List, Dict, Any, Optional
-from openai.types.chat import ChatCompletion
+import openai 
+from typing import Any
+from openai.types.chat import ChatCompletion 
+
+# OpenAI SDK v2 detection helper (used ONLY if the upper bound pin is lifted).
+# guard so the moment someone tries `openai>=2` they get a helpful ImportError
+# rather than silent breakage.
+try:
+    from importlib.metadata import version as _pkg_version
+
+    def _openai_major_version() -> int:
+        try:
+            return int(_pkg_version("openai").split(".", 1)[0])
+        except Exception:
+            return 1
+
+    if _openai_major_version() >= 2:
+        raise ImportError(
+            "primisai (Nexus) has not yet been migrated to the openai SDK v2 API.\n"
+            "Please pin `openai>=1.66.3,<2.0.0` or check the migration notes in\n"
+            "primisai/nexus/core/ai.py before upgrading to openai>=2."
+        )
+except Exception:
+    pass
 
 
 class AI:
@@ -17,7 +38,7 @@ class AI:
     including optional function calling with tools.
     """
 
-    def __init__(self, llm_config: Dict[str, str]):
+    def __init__(self, llm_config: dict[str, str]):
         """
         Initialize the AI instance.
 
@@ -37,9 +58,9 @@ class AI:
             api_key=llm_config['api_key']
         )
 
-    def generate_response(self, 
-                          messages: List[Dict[str, str]], 
-                          tools: Optional[List[Dict[str, Any]]] = None, 
+    def generate_response(self,
+                          messages: list[dict[str, str]],
+                          tools: list[dict[str, Any]] | None = None,
                           use_tools: bool = False) -> ChatCompletion:
         """
         Execute a chat completion.
@@ -61,12 +82,12 @@ class AI:
 
         try:
             params = self.llm_config.copy()
-            
+
             params.pop('api_key', None)
             params.pop('base_url', None)
-            
+
             params['messages'] = messages
-            
+
             if use_tools:
                 params['tools'] = tools
                 params['tool_choice'] = 'auto'
