@@ -30,7 +30,7 @@ class Debugger:
 
     def __init__(self, 
                  name: str, 
-                 workflow_id: Optional[str] = None,
+                 workflow_id: str | None = None,
                  log_level: int = logging.DEBUG):
         """
         Initialize the Debugger instance.
@@ -108,7 +108,7 @@ class Debugger:
         # Move existing logs if they exist
         if old_log_path.exists() and old_log_path != self.log_file_path:
             try:
-                with open(old_log_path, 'r') as source:
+                with open(old_log_path) as source:
                     with open(self.log_file_path, 'a') as dest:
                         dest.write('\n' + source.read())
                 # Remove the old log file
@@ -143,7 +143,7 @@ class Debugger:
         for handler in self.logger.handlers:
             handler.flush()
 
-    def log_dict(self, data: Dict, message: str = "") -> None:
+    def log_dict(self, data: dict, message: str = "") -> None:
         """
         Log a dictionary with optional message.
 
@@ -153,7 +153,7 @@ class Debugger:
         """
         self.log(f"{message}\n{json.dumps(data, indent=2)}")
 
-    def log_list(self, data: List, message: str = "") -> None:
+    def log_list(self, data: list, message: str = "") -> None:
         """
         Log a list with optional message.
 
