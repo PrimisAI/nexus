@@ -1,7 +1,10 @@
 from primisai.nexus.core import AI
 from typing import Dict, Any, List
 from copy import deepcopy
-from pydantic import BaseModel, create_model
+import logging
+from pydantic import BaseModel, create_model # type: ignore
+
+logger = logging.getLogger(__name__)
 
 
 def process_system_messages(old_system_messages, new_system_messages):
@@ -55,7 +58,7 @@ def extract_system_messages(system_messages_obj, agents_names):
             try:
                 system_messages_dict[agent_name] = getattr(system_messages_obj, agent_name)
             except AttributeError:
-                print(f"Warning: Could not get system message for agent {agent_name}")
+                logger.warning(f"Warning: Could not get system message for agent {agent_name}")
                 system_messages_dict[agent_name] = "No system message available"
         return system_messages_dict
 
@@ -87,7 +90,7 @@ class Prompter:
     agents perform their designated functions effectively.
     """
 
-    def __init__(self, agent_names: List[str], llm_config: Dict[str, str]):
+    def __init__(self, agent_names: list[str], llm_config: dict[str, str]):
         """
         Initializes the Prompter instance.
 
@@ -133,14 +136,14 @@ class Prompter:
                 "4. If Action = REMOVE: Remove the specified problematic text\n"
                 "5. If Action = MODIFY: Replace old text with new guideline text\n"
                 "6. Preserve all existing working guidelines unless explicitly told to remove them\n"
-                "If needed try to add few shot example from feedback to enhance performance of Agent"
+                "If needed try to add few-shot example from feedback to enhance performance of Agent"
                 "\n"
                 "CRITICAL RULES:\n"
                 "- NEVER remove or change the core agent identity (\"You are XYZ Agent...\")\n"
                 "- Only modify what the feedback explicitly specifies\n"
                 "- If feedback says 'NO CHANGE REQUIRED' for an agent, output: 'AGENT_NAME: NO_CHANGE'\n"
                 "- Keep all other working system message parts intact\n"
-                "- If Accuracy of current system messages is lesser than last one then get the last ones and update them based on feedback"
+                "- If Accuracy of current system messages is lower than the previous iteration, retrieve the previous ones and update them based on feedback."
                 "- Make surgical, targeted updates based on evidence-based feedback\n"
                 "\n"
                 "OUTPUT FORMAT (use exactly):\n"
@@ -198,8 +201,12 @@ class Prompter:
         user_message = {
             "role":
                 "user",
-            "content":
-                f"""This is User Query on which workflow is generated\n\n{user_query}\n{workflow}.\n Generate all supervisor, agents name and their system messages """
+                "content": (
+                f"Here is the user query and the generated workflow:\n\n"
+                f"User Query: {user_query}\n\n"
+                f"Workflow: {workflow}\n\n"
+                "Generate all supervisor and agent names along with their system messages."
+            )
         }
 
         # Add to conversation history
@@ -211,23 +218,25 @@ class Prompter:
 
         # Get response from LLM
         try:
+            #ADDED Refusal Validation
+            generated_content = self.ai.client.beta.chat.completions.parse(
+                messages=messages,
+                response_format=self.ResponseStructure,
+                model=self.model
+            )
+            message = generated_content.choices[0].message
 
-            generated_content = self.ai.client.beta.chat.completions.parse(messages=messages,
-                                                                           response_format=self.ResponseStructure,
-                                                                           model=self.model)
+            if getattr(message, "refusal", None):
+                raise ValueError(f"Model refused to generate warmup system messages: {message.refusal}")
 
-            # response = self.ai.generate_response(messages)
-            # generated_content = response.choices[0].message.content
+            if not message.parsed:
+                raise ValueError("Failed to parse system messages from response.")
 
-            # # Store the generated system messages
-            # self.current_system_messages = generated_content
-
-            # Add assistant response to conversation history
-            assistant_message = {"role": "assistant", "content": str(generated_content.choices[0].message.parsed)}
+            assistant_message = {"role": "assistant", "content": message.parsed.model_dump_json()}
             self.conversation_history.append(user_message)
             self.conversation_history.append(assistant_message)
 
-            return generated_content.choices[0].message.parsed
+            return message.parsed
 
         except Exception as e:
             raise Exception(f"Error in system message generation: {str(e)}")
@@ -263,7 +272,7 @@ IMPLEMENTATION INSTRUCTIONS:
 3. For agents with specific issues identified:
    - Implement the EXACT "Action Required" (ADD/REMOVE/MODIFY)
    - Keep all other existing system message intact
-4. REDUNDANCY CHECK: If the "Guideline Change" already exists in current system message → Output: "AGENT_NAME: NO_CHANGE""""
+4. REDUNDANCY CHECK: If the "Guideline Change" already exists in current system message → Output: "AGENT_NAME: NO_CHANGE"
 OUTPUT FORMAT REQUIREMENTS:
 - AGENT_NAME: NO_CHANGE (if no update needed)
 - AGENT_NAME: [complete updated system message] (if update needed)
@@ -283,28 +292,32 @@ The feedback is based on actual agent conversation analysis - implement changes 
 
         # Get response from LLM
         try:
+            #ADDED Refusal Check
+            response = self.ai.client.beta.chat.completions.parse(
+                messages=messages,
+                response_format=self.ResponseStructure,
+                model=self.model
+            )
+            message = response.choices[0].message
 
-            response = self.ai.client.beta.chat.completions.parse(messages=messages,
-                                                                  response_format=self.ResponseStructure,
-                                                                  model=self.model)
-            # response = self.ai.generate_response(messages)
-            # updated_content = response.choices[0].message.content
+            if getattr(message, "refusal", None):
+                raise ValueError(f"Model refused to update system messages: {message.refusal}")
 
-            # Update stored system messages
-            # self.current_system_messages = updated_content
+            if not message.parsed:
+                raise ValueError("Failed to parse updated system messages from response.")
 
-            # Add assistant response to conversation history
-            assistant_message = {"role": "assistant", "content": str(response.choices[0].message.parsed)}
+            assistant_message = {"role": "assistant", "content": message.parsed.model_dump_json()}
             self.conversation_history.append(assistant_message)
 
-            new_system_messages = extract_system_messages(response.choices[0].message.parsed, self.agent_names)
+            new_system_messages = extract_system_messages(message.parsed, self.agent_names)
+
             result = process_system_messages(old_system_messages, new_system_messages)
             return result
 
         except Exception as e:
             raise Exception(f"Error in system message update: {str(e)}")
 
-    def _construct_messages_with_system_positioning(self) -> List[Dict[str, str]]:
+    def _construct_messages_with_system_positioning(self) -> list[dict[str, str]]:
         """
         Construct message list with system message positioned 2 places before the current message.
         
@@ -330,6 +343,9 @@ The feedback is based on actual agent conversation analysis - implement changes 
             messages.append(self.system_message)
 
         return messages
+        
+    #ADDED:
+    def get_summary(self) -> dict[str, Any]:
         """
         Get a summary of the conversation state.
         
@@ -343,7 +359,8 @@ The feedback is based on actual agent conversation analysis - implement changes 
             "total_messages": len(self.conversation_history),
             "user_messages": len(user_messages),
             "assistant_messages": len(assistant_messages),
-            "iterations": len(assistant_messages),  # Each assistant response is an iteration
+            "iterations": len(assistant_messages),
             "has_current_system_messages": self.current_system_messages is not None,
             "last_update": self.conversation_history[-1]["content"][:100] + "..." if self.conversation_history else None
         }
+        

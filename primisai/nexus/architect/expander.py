@@ -2,7 +2,6 @@ from primisai.nexus.core import AI
 from typing import Dict, Any
 
 
-
 class WorkflowExpander:
     """
     Analyzes a user's initial query and expands it into a detailed, narrative plan.
@@ -22,7 +21,7 @@ class WorkflowExpander:
     `WorkflowStructurer`.
     """
 
-    def __init__(self, llm_config: Dict[str, str]):
+    def __init__(self, llm_config: dict[str, str]):
         """
         Initializes the WorkflowExpander with LLM configuration.
 
@@ -58,7 +57,7 @@ class WorkflowExpander:
                 "IMPORTANT: When passing the user query to agents, use the exact original wording without any modification. "
                 "Do not provide implementation code—focus on architecture, structure, and clarity. "
                 "Be precise, concise, and ensure your output is easy to follow for both humans and machines."
-                "DONT USE TOOLS UNTILL UNLESS NEEDED. DONT USE Sub supervisors. Only supervisor and agents. Dont Use any output Schemas for Agents. Supervisor Cannot ask any feedback quetion from user"
+                "DO NOT USE TOOLS UNLESS NEEDED. DO NOT USE sub-supervisors. Only use a supervisor and agents. DO NOT use any output schemas for agents. The supervisor cannot ask any feedback questions from the user." 
             )
         }, {
             "role":
@@ -72,6 +71,10 @@ class WorkflowExpander:
         # Get response from LLM
         try:
             response = self.ai.generate_response(messages)
-            return response.choices[0].message.content
+            content = response.choices[0].message.content #ADDED
+            if not content:
+                raise ValueError("LLM returned an empty response during expansion")
+            return content
+            # return response.choices[0].message.content
         except Exception as e:
             raise Exception(f"Error in workflow expansion: {str(e)}")

@@ -1,11 +1,119 @@
+from typing import Any
+import ast
+import logging
+
+from primisai.nexus.architect.schemas import (
+    AgentDefinition,
+    SupervisorDefinition,
+    Tool,
+    WorkflowDefinition,
+)
 from primisai.nexus.core import Agent, Supervisor
-from typing import Dict, Any
-from primisai.nexus.architect.schemas import Tool, AgentDefinition, SupervisorDefinition, WorkflowDefinition
+
+logger = logging.getLogger(__name__)
 
 
 class ValidationError(Exception):
     """Custom exception for validation errors"""
+
     pass
+
+
+# Deny-list of dangerous tokens/patterns in LLM-generated tool-implementation
+_UNSAFE_MODULES = frozenset({
+    "os", "subprocess", "sys", "builtins", "marshal", "pickle",
+    "shelve", "shutil", "pathlib", "posixpath", "ntpath",
+    "ctypes", "socket", "http.client", "urllib", "urllib.request",
+    "urllib3", "requests", "multiprocessing", "threading",
+})
+_UNSAFE_AST_NODES = (
+    # Prevent wildcard / star imports
+    ast.Starred,
+)
+
+
+def _audit_tool_implementation(source: str) -> None:
+    """Static safety audit for LLM-generated tool code before exec().
+
+    Raises :class:`ValidationError` if any dangerous pattern is detected, so
+    the workflow generator can surface the problem rather than running
+    untrusted code with full privileges.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as e:
+        raise ValidationError(f"Tool implementation has SyntaxError: {e.msg} (line {e.lineno})")
+
+    for node in ast.walk(tree):
+        # Reject all import statements for dangerous modules
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                top = alias.name.split(".", 1)[0]
+                if top in _UNSAFE_MODULES or alias.name in _UNSAFE_MODULES:
+                    raise ValidationError(
+                        f"Tool implementation imports forbidden module '{alias.name}'"
+                    )
+        elif isinstance(node, ast.ImportFrom):
+            if node.module is None:
+                continue
+            top = node.module.split(".", 1)[0]
+            if top in _UNSAFE_MODULES or node.module in _UNSAFE_MODULES:
+                raise ValidationError(
+                    f"Tool implementation imports forbidden module '{node.module}'"
+                )
+        # Reject getattr-style attribute access that attempts to reach builtins/os/sys
+        elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            if node.value.id in _UNSAFE_MODULES:
+                raise ValidationError(
+                    f"Tool implementation references forbidden attribute '{node.value.id}.{node.attr}'"
+                )
+        # Reject __import__() runtime dynamic imports
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if node.func.id in {"__import__", "eval", "exec", "compile", "open", "input"}:
+                raise ValidationError(
+                    f"Tool implementation calls forbidden builtin '{node.func.id}()'"
+                )
+
+
+_RESTRICTED_BUILTINS = {
+    name: val for name, val in __builtins__.items()
+    if isinstance(__builtins__, dict) and name not in {
+        "__import__", "eval", "exec", "compile", "open", "breakpoint",
+        "input", "memoryview", "help", "dir", "globals", "locals", "vars",
+    }
+} if isinstance(__builtins__, dict) else {
+    # Fallback if builtins is the module object
+    name: getattr(__builtins__, name)
+    for name in (
+        "abs", "bool", "dict", "enumerate", "float", "int", "isinstance",
+        "issubclass", "iter", "len", "list", "map", "max", "min", "next",
+        "range", "repr", "reversed", "round", "set", "slice", "sorted",
+        "str", "sum", "tuple", "type", "zip", "KeyError", "ValueError",
+        "TypeError", "IndexError", "StopIteration", "RuntimeError",
+        "AttributeError", "Exception", "object", "None", "True", "False",
+        "bytes", "bytearray", "frozenset", "filter",
+    ) if hasattr(__builtins__, name)
+}
+
+
+def _safe_exec_tool(source: str, tool_name: str) -> Any:
+    """Run an LLM-generated tool implementation string with restricted globals."""
+    _audit_tool_implementation(source)
+
+    # Explicit, restricted globals. No __builtins__ import access,
+    # no os/subprocess/sys available by default.
+    namespace: dict[str, Any] = {"__builtins__": _RESTRICTED_BUILTINS}
+    # Also ban names listed in the unsafe module set from appearing in globals
+    for banned in _UNSAFE_MODULES:
+        namespace.pop(banned, None)
+
+    exec(source, namespace)  # noqa: S102 - pattern is audited + globals restricted
+
+    if tool_name not in namespace:
+        raise ValidationError(
+            f"Tool name '{tool_name}' not found after loading implementation."
+        )
+    return namespace[tool_name]
 
 
 class ToolBuilder:
@@ -19,7 +127,7 @@ class ToolBuilder:
 
     The generated script orchestrates the execution of the various components
     (nodes) in the correct order, handling the data flow between them as
-e   defined by the edges of the workflow graph. The final output is a
+    defined by the edges of the workflow graph. The final output is a
     self-contained piece of code ready to be executed or passed to the
     `Evaluator` for performance assessment.
     """
@@ -36,13 +144,13 @@ e   defined by the edges of the workflow graph. The final output is a
         """
         self.definition = tool_definition
 
-    def build(self) -> Dict[str, Any]:
+    def build(self) -> dict[str, Any]:
         """Convert Tool definition to Nexus tool format"""
         try:
-            # Create the tool function from implementation string
-            namespace = {}
-            exec(self.definition.implementation, namespace)
-            tool_func = namespace[self.definition.metadata.function.name]
+            tool_func = _safe_exec_tool(
+                self.definition.implementation,
+                self.definition.metadata.function.name,
+            )
 
             # Construct the metadata in the correct format
             metadata = {
@@ -55,55 +163,61 @@ e   defined by the edges of the workflow graph. The final output is a
                         "properties": {
                             prop.argument: {
                                 "type": prop.type,
-                                "description": prop.description
-                            } for prop in self.definition.metadata.function.parameters.properties
+                                "description": prop.description,
+                            }
+                            for prop in self.definition.metadata.function.parameters.properties
                         },
-                        "required": self.definition.metadata.function.parameters.required
-                    }
-                }
+                        "required": self.definition.metadata.function.parameters.required,
+                    },
+                },
             }
 
             return {"tool": tool_func, "metadata": metadata}
 
         except Exception as e:
-            print(f"Error in tool building: {str(e)}")
+            logger.error(f"Error in tool building: {str(e)}")
             raise
 
     def validate(self) -> bool:
         """Run validation tests based on constraints"""
         try:
-            # Validate function implementation
-            namespace = {}
-            exec(self.definition.implementation, namespace)
-            tool_func = namespace[self.definition.metadata.function.name]
+            tool_func = _safe_exec_tool(
+                self.definition.implementation,
+                self.definition.metadata.function.name,
+            )
 
             # Validate function signature matches parameters
             import inspect
+
             sig = inspect.signature(tool_func)
             param_names = set(sig.parameters.keys())
-            required_params = set(p.argument for p in self.definition.metadata.function.parameters.properties)
+            required_params = {
+                p.argument
+                for p in self.definition.metadata.function.parameters.properties
+            }
 
             if param_names != required_params:
-                print(f"Parameter mismatch: function has {param_names}, metadata requires {required_params}")
+                logger.warning(
+                    f"Parameter mismatch: function has {param_names}, metadata requires {required_params}"
+                )
                 return False
 
             return True
 
         except Exception as e:
-            print(f"Tool validation failed: {str(e)}")
+            logger.error(f"Tool validation failed: {str(e)}")
             return False
 
 
 class AgentBuilder:
-
-    def __init__(self, agent_definition: AgentDefinition, llm_config: Dict[str, str]):
+    def __init__(self, agent_definition: AgentDefinition, llm_config: dict[str, str]):
         self.definition = agent_definition
         self.llm_config = llm_config
 
     def validate(self) -> bool:
         """
         Validate agent definition meets all requirements.
-        
+
         Validates:
         1. Basic requirements (name, system message)
         2. Tool configuration
@@ -125,10 +239,10 @@ class AgentBuilder:
 
             return True
         except ValidationError as e:
-            print(f"Agent validation failed: {str(e)}")
+            logger.error(f"Agent validation failed: {str(e)}")
             return False
         except Exception as e:
-            print(f"Unexpected error in agent validation: {str(e)}")
+            logger.error(f"Unexpected error in agent validation: {str(e)}")
             return False
 
     def _validate_basic_requirements(self):
@@ -136,13 +250,18 @@ class AgentBuilder:
         if not self.definition.name or not self.definition.name.strip():
             raise ValidationError("Agent name cannot be empty")
 
-        if not self.definition.system_message or not self.definition.system_message.strip():
+        if (
+            not self.definition.system_message
+            or not self.definition.system_message.strip()
+        ):
             raise ValidationError("System message cannot be empty")
 
     def _validate_tool_configuration(self):
         """Validate tool configuration consistency"""
         if self.definition.use_tools and not self.definition.tools:
-            raise ValidationError("Agent is configured to use tools but no tools provided")
+            raise ValidationError(
+                "Agent is configured to use tools but no tools provided"
+            )
 
         if not self.definition.use_tools and self.definition.tools:
             raise ValidationError("Tools provided but agent not configured to use them")
@@ -168,6 +287,7 @@ class AgentBuilder:
             try:
                 # Try to parse the schema string as JSON
                 import json
+
                 schema = json.loads(self.definition.output_schema)
 
                 # Basic schema validation
@@ -199,37 +319,43 @@ class AgentBuilder:
                 if tool_builder.validate():
                     tools.append(tool_builder.build())
                 else:
-                    raise ValidationError(f"Tool validation failed for {tool_def.metadata.function.name}")
+                    raise ValidationError(
+                        f"Tool validation failed for {tool_def.metadata.function.name}"
+                    )
 
         # Parse output schema if provided
         output_schema = None
         if self.definition.output_schema:
             try:
                 import json
+
                 output_schema = json.loads(self.definition.output_schema)
             except json.JSONDecodeError as e:
                 raise ValidationError(f"Invalid output schema JSON: {str(e)}")
 
-        return Agent(name=self.definition.name,
-                     system_message=self.definition.system_message,
-                     llm_config=self.llm_config,
-                     tools=tools if tools else None,
-                     use_tools=self.definition.use_tools,
-                     keep_history=self.definition.keep_history,
-                     output_schema=output_schema,
-                     strict=self.definition.strict)
+        return Agent(
+            name=self.definition.name,
+            system_message=self.definition.system_message,
+            llm_config=self.llm_config,
+            tools=tools if tools else None,
+            use_tools=self.definition.use_tools,
+            keep_history=self.definition.keep_history,
+            output_schema=output_schema,
+            strict=self.definition.strict,
+        )
 
 
 class SupervisorBuilder:
-
-    def __init__(self, supervisor_definition: SupervisorDefinition, llm_config: Dict[str, str]):
+    def __init__(
+        self, supervisor_definition: SupervisorDefinition, llm_config: dict[str, str]
+    ):
         self.definition = supervisor_definition
         self.llm_config = llm_config
 
     def validate(self) -> bool:
         """
         Validate supervisor definition meets all requirements.
-        
+
         Validates:
         1. Basic requirements (name, system message)
         2. Management structure
@@ -248,10 +374,10 @@ class SupervisorBuilder:
             return True
 
         except ValidationError as e:
-            print(f"Supervisor validation failed: {str(e)}")
+            logger.error(f"Supervisor validation failed: {str(e)}")
             return False
         except Exception as e:
-            print(f"Unexpected error in supervisor validation: {str(e)}")
+            logger.error(f"Unexpected error in supervisor validation: {str(e)}")
             return False
 
     def _validate_basic_requirements(self):
@@ -259,55 +385,68 @@ class SupervisorBuilder:
         if not self.definition.name or not self.definition.name.strip():
             raise ValidationError("Supervisor name cannot be empty")
 
-        if not self.definition.system_message or not self.definition.system_message.strip():
+        if (
+            not self.definition.system_message
+            or not self.definition.system_message.strip()
+        ):
             raise ValidationError("System message cannot be empty")
 
     def _validate_management_structure(self):
         """Validate management structure is consistent"""
         # Check for duplicate entries
-        managed_components = (self.definition.managed_agents + self.definition.managed_assistant_supervisors)
+        managed_components = (
+            self.definition.managed_agents
+            + self.definition.managed_assistant_supervisors
+        )
         if len(set(managed_components)) != len(managed_components):
             raise ValidationError("Duplicate component names in management structure")
 
     def _validate_assistant_constraints(self):
         """Validate assistant supervisor specific constraints"""
-        if self.definition.is_assistant:
+        if self.definition.is_assistant and self.definition.managed_assistant_supervisors :  
             # Assistant supervisors shouldn't manage other assistant supervisors
-            if self.definition.managed_assistant_supervisors:
-                raise ValidationError("Assistant supervisors cannot manage other assistant supervisors")
+                raise ValidationError(
+                    "Assistant supervisors cannot manage other assistant supervisors"
+                )
 
     def build(self, id_) -> Supervisor:
         """Build supervisor if validation passes"""
         if not self.validate():
-            raise ValidationError(f"Validation failed for supervisor {self.definition.name}")
+            raise ValidationError(
+                f"Validation failed for supervisor {self.definition.name}"
+            )
 
-        return Supervisor(name=self.definition.name,
-                          system_message=self.definition.system_message,
-                          llm_config=self.llm_config,
-                          is_assistant=self.definition.is_assistant,
-                          workflow_id=id_)
+        return Supervisor(
+            name=self.definition.name,
+            system_message=self.definition.system_message,
+            llm_config=self.llm_config,
+            is_assistant=self.definition.is_assistant,
+            workflow_id=id_,
+        )
 
 
 class WorkflowBuilder:
-
-    def __init__(self,
-                 agents_system_messages,
-                 workflow_definition: WorkflowDefinition,
-                 llm_config: Dict[str, str],
-                 workflow_id: str = "000"):
+    def __init__(
+        self,
+        agents_system_messages,
+        workflow_definition: WorkflowDefinition,
+        llm_config: dict[str, str],
+        workflow_id: str = "000",
+    ):
         self.definition = workflow_definition
         self.llm_config = llm_config
         self.components = {}  # Store built components
         if agents_system_messages:
-
             self._update_system_messages(agents_system_messages)
         self.workflow_id = workflow_id
 
-    def _update_system_messages(self, agent_messages: Dict[str, str]):
+    def _update_system_messages(self, agent_messages: dict[str, str]):
         """Update system messages in the workflow definition"""
         # Update main supervisor
         if self.definition.main_supervisor.name in agent_messages:
-            self.definition.main_supervisor.system_message = agent_messages[self.definition.main_supervisor.name]
+            self.definition.main_supervisor.system_message = agent_messages[
+                self.definition.main_supervisor.name
+            ]
 
         # Update assistant supervisors
         for supervisor in self.definition.assistant_supervisors:
@@ -322,10 +461,12 @@ class WorkflowBuilder:
     def build_component_and_validate(self) -> Supervisor:
         """Build and validate all components, then assemble the workflow"""
         # 1. Build and validate main supervisor
-        main_sup_builder = SupervisorBuilder(self.definition.main_supervisor, self.llm_config)
+        main_sup_builder = SupervisorBuilder(
+            self.definition.main_supervisor, self.llm_config
+        )
         if main_sup_builder.validate():
             main_supervisor = main_sup_builder.build(self.workflow_id)
-            self.components['main_supervisor'] = main_supervisor
+            self.components["main_supervisor"] = main_supervisor
 
         # 2. Build and validate assistant supervisors
         for asst_sup_def in self.definition.assistant_supervisors:
@@ -344,7 +485,7 @@ class WorkflowBuilder:
         # 4. Connect components based on management structure
         self._connect_components()
 
-        return self.components['main_supervisor']
+        return self.components["main_supervisor"]
 
     def _connect_components(self):
         """
@@ -356,11 +497,13 @@ class WorkflowBuilder:
             asst_sup = self.components[asst_sup_def.name]
             for agent_name in asst_sup_def.managed_agents:
                 if agent_name not in self.components:
-                    raise ValueError(f"Agent {agent_name} not found for assistant supervisor {asst_sup_def.name}")
+                    raise ValueError(
+                        f"Agent {agent_name} not found for assistant supervisor {asst_sup_def.name}"
+                    )
                 asst_sup.register_agent(self.components[agent_name])
 
         # 2. Then, connect components to main supervisor
-        main_sup = self.components['main_supervisor']
+        main_sup = self.components["main_supervisor"]
 
         # a. Connect direct agents (only those specifically managed by main supervisor)
         for agent_name in self.definition.main_supervisor.managed_agents:
@@ -369,7 +512,9 @@ class WorkflowBuilder:
             main_sup.register_agent(self.components[agent_name])
 
         # b. Connect assistant supervisors to main supervisor
-        for asst_sup_name in self.definition.main_supervisor.managed_assistant_supervisors:
+        for (
+            asst_sup_name
+        ) in self.definition.main_supervisor.managed_assistant_supervisors:
             if asst_sup_name not in self.components:
                 raise ValueError(f"Assistant supervisor {asst_sup_name} not found")
             main_sup.register_agent(self.components[asst_sup_name])
@@ -377,14 +522,14 @@ class WorkflowBuilder:
     def save_workflow_to_file(self, output_path: str) -> None:
         """
         Save the workflow implementation to a Python file.
-        
+
         Args:
             output_path (str): Path where the Python file should be saved
         """
         try:
-            with open(output_path, 'w') as file:
+            with open(output_path, "w") as file:
                 # Write imports
-                file.write('''import os
+                file.write("""import os
 import json  # Added for output schema parsing
 from dotenv import load_dotenv
 from primisai.nexus.core import Agent, Supervisor
@@ -398,7 +543,7 @@ llm_config = {
     'api_key': os.getenv('LLM_API_KEY'),
     'base_url': os.getenv('LLM_BASE_URL')
 }
-    ''')
+    """)
 
                 # Write tool functions and their metadata
                 file.write("\n# Tool Definitions\n")
@@ -416,12 +561,14 @@ llm_config = {
                 file.write(asst_sup_definitions)
 
                 # Write main supervisor creation and component registration
-                file.write("\n# Main Supervisor Definition and Component Registration\n")
+                file.write(
+                    "\n# Main Supervisor Definition and Component Registration\n"
+                )
                 main_sup_definition = self._generate_main_supervisor_definition()
                 file.write(main_sup_definition)
 
                 # Write main execution block
-                file.write('''
+                file.write("""
 if __name__ == "__main__":
     # Display the workflow structure
     print("\\nGenerated Workflow Structure:")
@@ -439,9 +586,9 @@ if __name__ == "__main__":
             print(f"Response: {response}")
         except Exception as e:
             print(f"Error: {str(e)}")
-    ''')
+    """)
 
-            print(f"Workflow implementation saved to {output_path}")
+            logger.info(f"Workflow implementation saved to {output_path}")
 
         except Exception as e:
             raise Exception(f"Error saving workflow to file: {str(e)}")
@@ -450,10 +597,15 @@ if __name__ == "__main__":
         """Generate code for tool definitions."""
         tool_code = []
         tool_vars = []  # To keep track of tool variable names
+        processed_tools = set()  # ADDED: Prevent duplicate tool generation
 
         for agent_def in self.definition.agents:
             if agent_def.tools:
                 for tool in agent_def.tools:
+                    tool_name = tool.metadata.function.name
+                    if tool_name in processed_tools:
+                        continue
+                    processed_tools.add(tool_name)
                     # Add tool function implementation
                     tool_code.append(tool.implementation)
 
@@ -472,12 +624,12 @@ if __name__ == "__main__":
             "type": "{tool.metadata.function.parameters.type}",
             "properties": {{'''
 
-                # Add properties
-                for prop in tool.metadata.function.parameters.properties:
-                    metadata_code += f'''
-                "{prop.argument}": {{"type": "{prop.type}", "description": "{prop.description}"}},'''
+                    # Add properties
+                    for prop in tool.metadata.function.parameters.properties:
+                        metadata_code += f'''
+                    "{prop.argument}": {{"type": "{prop.type}", "description": "{prop.description}"}},'''
 
-                metadata_code += f'''
+                    metadata_code += f"""
             }},
             "required": {tool.metadata.function.parameters.required}
         }}
@@ -485,8 +637,8 @@ if __name__ == "__main__":
 }}
 
 {tool_name}_tool = {{"tool": {tool_name}, "metadata": {metadata_var}}}
-    '''
-                tool_code.append(metadata_code)
+    """
+                    tool_code.append(metadata_code)
 
         return "\n".join(tool_code)
 
@@ -497,15 +649,21 @@ if __name__ == "__main__":
         for agent_def in self.definition.agents:
             tools_list = []
             if agent_def.tools:
-                tools_list = [f"{tool.metadata.function.name}_tool" for tool in agent_def.tools]
+                tools_list = [
+                    f"{tool.metadata.function.name}_tool" for tool in agent_def.tools
+                ]
 
             # Format output schema if provided
-            output_schema_str = (f"json.loads('''{agent_def.output_schema}''')" if agent_def.output_schema else "None")
+            output_schema_str = (
+                f"json.loads('''{agent_def.output_schema}''')"
+                if agent_def.output_schema
+                else "None"
+            )
 
             agent_code.append(f'''
 {agent_def.name.lower()} = Agent(
     name="{agent_def.name}",
-    system_message="""{agent_def.system_message}""",
+    system_message={agent_def.system_message!r}, 
     llm_config=llm_config,
     tools=[{", ".join(tools_list)}] if {bool(tools_list)} else None,
     use_tools={agent_def.use_tools},
@@ -524,14 +682,18 @@ if __name__ == "__main__":
             sup_code.append(f'''
 {sup_def.name.lower()} = Supervisor(
     name="{sup_def.name}",
-    system_message="""{sup_def.system_message}""",
+    system_message={sup_def.system_message!r},
     llm_config=llm_config,
     is_assistant=True
 )
 
 # Register agents with {sup_def.name}
-{" ".join(f'{sup_def.name.lower()}.register_agent({agent_name.lower()});' 
-        for agent_name in sup_def.managed_agents)}
+{
+                " ".join(
+                    f"{sup_def.name.lower()}.register_agent({agent_name.lower()});"
+                    for agent_name in sup_def.managed_agents
+                )
+            }
 ''')
 
         return "\n".join(sup_code)
@@ -543,18 +705,26 @@ if __name__ == "__main__":
         code = f'''
 main_supervisor = Supervisor(
     name="{main_sup_def.name}",
-    system_message="""{main_sup_def.system_message}""",
+    system_message={main_sup_def.system_message!r},
     llm_config=llm_config,
     is_assistant=False
 )
 
 # Register direct agents with main supervisor
-{" ".join(f'main_supervisor.register_agent({agent_name.lower()});' 
-        for agent_name in main_sup_def.managed_agents)}
+{
+            " ".join(
+                f"main_supervisor.register_agent({agent_name.lower()});"
+                for agent_name in main_sup_def.managed_agents
+            )
+        }
 
 # Register assistant supervisors with main supervisor
-{" ".join(f'main_supervisor.register_agent({sup_name.lower()});' 
-        for sup_name in main_sup_def.managed_assistant_supervisors)}
+{
+            " ".join(
+                f"main_supervisor.register_agent({sup_name.lower()});"
+                for sup_name in main_sup_def.managed_assistant_supervisors
+            )
+        }
 '''
 
         return code

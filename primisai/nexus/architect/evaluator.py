@@ -1,5 +1,6 @@
 from primisai.nexus.core import AI
 from typing import Dict
+import logging
 import json
 import random
 from typing import List, Dict, Any, Tuple
@@ -11,7 +12,9 @@ from threading import Lock
 import threading
 import time
 import uuid
+import os
 
+logger = logging.getLogger(__name__)
 
 class Evaluator:
     """
@@ -28,7 +31,7 @@ class Evaluator:
     in the benchmark, providing a flexible and nuanced assessment of performance.
     """
 
-    def __init__(self, llm_config: Dict[str, str], benchmark_path: str, subset_size: int = 10):
+    def __init__(self, llm_config: dict[str, str], benchmark_path: str, subset_size: int = 10):
         """
         Initializes the Evaluator by loading the benchmark dataset.
 
@@ -71,26 +74,26 @@ class Evaluator:
     def _load_benchmark(self):
         """Load benchmark data and randomly select good quality examples."""
         try:
-            with open(self.benchmark_path, 'r', encoding='utf-8') as file:
+            with open(self.benchmark_path, encoding='utf-8') as file:
                 for line in file:
                     data = json.loads(line.strip())
                     # Only keep good quality examples
                     # if data.get('quality', '').lower() == 'good':
                     self.benchmark_data.append(data)
 
-            print(f"Loaded {len(self.benchmark_data)} examples from benchmark")
+            logger.info(f"Loaded {len(self.benchmark_data)} examples from benchmark")
 
             # Randomly select subset_size examples instead of taking the first ones
             if len(self.benchmark_data) >= self.subset_size:
                 self.test_subset = random.sample(self.benchmark_data, self.subset_size)
             else:
                 self.test_subset = self.benchmark_data
-                print(f"Warning: Only {len(self.benchmark_data)} examples available, using all")
+                logger.warning(f"Only {len(self.benchmark_data)} examples available, using all")
 
         except Exception as e:
             raise Exception(f"Error loading benchmark: {str(e)}")
 
-    def evaluate_supervisor(self, main_supervisor_or_factory, workflow_id, iteration, is_factory=False) -> Dict[str, Any]:
+    def evaluate_supervisor(self, main_supervisor_or_factory, workflow_id, iteration, is_factory=False) -> dict[str, Any]:
         """
         Evaluate the supervisor on the test subset with parallel processing.
         
@@ -109,7 +112,7 @@ class Evaluator:
         # Add thread-safe supervisor creation lock
         supervisor_creation_lock = threading.Lock()
 
-        print(f"Testing supervisor on {len(self.test_subset)} examples...")
+        logger.info(f"Testing supervisor on {len(self.test_subset)} examples...")
 
         # Initialize progress bar
         progress_bar = tqdm(total=len(self.test_subset), desc="Evaluating", unit="question")
@@ -132,11 +135,13 @@ class Evaluator:
 
                 # Get response from supervisor
                 response = supervisor.chat(test_query)
-                path = "/home/humza/office/primisai/nexus/nexus_workflows/"
-                path = path + workflow_id + "_" + str(unique_suffix)
-                path = path + "/history.jsonl"
+                path = os.path.join(
+                    "nexus_workflows",
+                    f"{workflow_id}_{unique_suffix}",
+                    "history.jsonl"
+                )
                 messages = []
-                with open(path, 'r', encoding='utf-8') as f:
+                with open(path, encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
                         if line:
@@ -149,27 +154,28 @@ class Evaluator:
                         continue
 
                     if msg['sender_type'] == "user":
-                        if i == len(messages):
+                        if i >= len(messages) - 1: #FIXED INDEX ERROE
                             continue
                         else:
                             temp = "User to " + messages[i + 1]['sender_name'] + ": " + msg['content']
                             chat = chat + temp + "\n\n"
 
-                    elif messages[i]['sender_type'] == "main_supervisor" and messages[i - 1]['sender_type'] == "main_supervisor":
+                    elif (messages[i]['sender_type'] in ("main_supervisor", "assistant_supervisor")
+                          and messages[i - 1]['sender_type'] in ("main_supervisor", "assistant_supervisor")):
                         content = msg['content']
                         to = messages[i - 1]['tool_calls'][0]['function']['name'].replace("delegate_to_", "")
                         from_ = msg['sender_name']
                         temp = from_ + " to " + to + " : " + content
                         chat = chat + temp + "\n\n"
 
-                    elif msg['sender_type'] == "agent" and messages[i - 1]['sender_type'] == "main_supervisor":
+                    elif msg['sender_type'] == "agent" and messages[i - 1]['sender_type'] in ("main_supervisor", "assistant_supervisor"):
                         content = msg['content']
                         to = messages[i - 1]['sender_name']
                         from_ = msg['sender_name']
                         temp = from_ + " to " + to + " : " + content
                         chat = chat + temp + "\n\n"
 
-                    elif msg['sender_type'] == "main_supervisor" and msg['role'] == "assistant" and msg['content'] is not None:
+                    elif messages[i]['sender_type'] in ("main_supervisor", "assistant_supervisor") and msg['role'] == "assistant" and msg['content'] is not None:
                         content = msg['content']
                         to = "User"
                         from_ = msg['sender_name']
@@ -237,7 +243,7 @@ class Evaluator:
                         progress_bar.update(1)
 
                 except Exception as e:
-                    print(f"Unexpected error processing example: {str(e)}")
+                    logger.error(f"Unexpected error processing example: {str(e)}")
                     with self._results_lock:
                         self.wrong_answers += 1
                     with self._progress_lock:
@@ -266,16 +272,16 @@ class Evaluator:
             'detailed_results': self.results
         }
 
-        print(f"\n=== Evaluation Results ===")
-        print(f"Total Examples: {total_examples}")
-        print(f"Correct Answers: {self.correct_answers}")
-        print(f"Wrong Answers: {self.wrong_answers}")
-        print(f"Final Accuracy: {accuracy:.2%}")
-        print(f"Error Rate: {evaluation_results['error_rate']:.2%}")
+        logger.info("\n=== Evaluation Results ===")
+        logger.info(f"Total Examples: {total_examples}")
+        logger.info(f"Correct Answers: {self.correct_answers}")
+        logger.info(f"Wrong Answers: {self.wrong_answers}")
+        logger.info(f"Final Accuracy: {accuracy:.2%}")
+        logger.info(f"Error Rate: {evaluation_results['error_rate']:.2%}")
 
         return evaluation_results
 
-    def generate_feedback_summary(self, old_system_messages, evaluation_results: Dict[str, Any]) -> str:
+    def generate_feedback_summary(self, old_system_messages, evaluation_results: dict[str, Any]) -> str:
         """
         Generate AI-powered structured feedback based on evaluation results and current system messages.
         
@@ -290,8 +296,10 @@ class Evaluator:
         detailed_results = evaluation_results['detailed_results']
 
         # Prepare all question-answer pairs for AI analysis
-        qa_pairs = []
-        failed_examples = []
+        # qa_pairs = []
+        # failed_examples = []
+        qa_pairs = detailed_results
+        failed_examples = [r for r in detailed_results if not r['is_correct']]
         FAILED_METRIC = """Here are some examples from FAILED examples\n\n"""
         # Randomly select up to 10 failed examples to include in the feedback
         failed_results = [r for r in detailed_results if r['is_correct'] == False]
@@ -305,8 +313,8 @@ class Evaluator:
             example_text = f"{result['question']}\nExpected Answer: {result['expected_answer']}\nPredicted Answer: {result['actual_response']}\nIs Correct: {result['is_correct']}\n"
 
             # Only include chat for selected examples
-            # if result['id'] in chat_ids:
-            #     example_text += f"\nChat of this Example:\n{result['chat']}"
+            if result['id'] in chat_ids:
+                example_text += f"\nChat of this Example:\n{result['chat']}"
 
             FAILED_METRIC += example_text + "\n\n---\n\n"
 
@@ -425,8 +433,14 @@ Your analysis will be used to directly update individual agent system messages, 
             return ai_feedback
 
         except Exception as e:
-            print(f"Error generating AI feedback: {str(e)}")
-            return self._generate_basic_feedback(evaluation_results)
+            logger.error(f"Error generating AI feedback: {str(e)}")
+            #return self._generate_basic_feedback(evaluation_results)
+            #FIXED AttributeError. _generate_basic_feedback DOES NOT exist
+            return (
+                f"Evaluation Accuracy: {accuracy:.2%}\n"
+                f"Failed Examples Count: {len(failed_results)}\n"
+                "Could not generate detailed AI feedback due to an API error."
+            )
 
     def _check_answer_correctness(self, actual: str, predicted: str) -> bool:
         """
@@ -487,15 +501,15 @@ Return ONLY: 1 (same) or 0 (different)"""
 
                 # If no clear 1 or 0 found, try again
                 if attempt < 2:  # Don't print on last attempt
-                    print(f"Warning: LLM evaluator returned unclear response: '{generated_content}'. Retrying...")
+                    logger.warning(f"Warning: LLM evaluator returned unclear response: '{generated_content}'. Retrying...")
 
             except Exception as e:
                 if attempt < 2:  # Don't print on last attempt
-                    print(f"Error in LLM evaluation (attempt {attempt + 1}): {str(e)}. Retrying...")
+                    logger.warning(f"Error in LLM evaluation (attempt {attempt + 1}): {str(e)}. Retrying...")
                 continue
 
         # If all attempts failed, fall back to simple string matching
-        print("Warning: LLM evaluation failed after 3 attempts. Falling back to simple string matching.")
+        logger.warning("Warning: LLM evaluation failed after 3 attempts. Falling back to simple string matching.")
         return self._simple_string_matching(actual, predicted)
 
     def _simple_string_matching(self, actual: str, predicted: str) -> bool:
@@ -515,7 +529,7 @@ Return ONLY: 1 (same) or 0 (different)"""
         # Check if expected answer is contained in response or vice versa
         return (actual_clean in predicted_clean) or (predicted_clean in actual_clean)
 
-    def _construct_messages_with_system_positioning(self, sys_msg) -> List[Dict[str, str]]:
+    def _construct_messages_with_system_positioning(self, sys_msg) -> list[dict[str, str]]:
         """
         Construct message list with system message positioned 2 places before the current message.
         
