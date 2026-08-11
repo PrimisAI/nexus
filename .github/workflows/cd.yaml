@@ -28,14 +28,19 @@ jobs:
         run: |
           git checkout -B ${{ github.ref_name }} ${{ github.sha }}
 
+      - name: Setup | Install tomli_w for sync_dependencies.py
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade tomli_w  # sync script uses tomllib+tomli_w
+
       - name: Setup | Sync Dependencies
         run: |
-          python -m pip install --upgrade toml
           python scripts/sync_dependencies.py
 
+      # Upgraded python-semantic-release v9.12.0 -> v10.6.1
       - name: Action | Semantic Version Release
         id: release
-        uses: python-semantic-release/python-semantic-release@v9.12.0
+        uses: python-semantic-release/python-semantic-release@v10.6.1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           git_committer_name: "github-actions"
@@ -55,8 +60,10 @@ jobs:
         with:
             password: ${{ secrets.PYPI_API_TOKEN }}
 
+      # Upgraded python-semantic-release/publish-action v9.8.9 -> v10.6.1
+      # Kept in lock-step with the main semantic-release action (same major version).
       - name: Publish | Upload to GitHub Release Assets
-        uses: python-semantic-release/publish-action@v9.8.9
+        uses: python-semantic-release/publish-action@v10.6.1
         if: steps.release.outputs.released == 'true'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
