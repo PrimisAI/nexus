@@ -66,3 +66,7 @@ version_toml = [
 ]
 version_source = "commit"
 commit_message = "chore(release): 🚀 bump version to {version}"
+
+[tool.semantic_release.changelog]
+mode = "update"
+insertion_flag = "<!-- version list -->"

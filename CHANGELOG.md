@@ -1,5 +1,13 @@
 # CHANGELOG
 
+<!-- version list -->
+
+## v1.0.0 (2026-08-11)
+
+### Chores
+
+* chore(release): 🚀 bump version to 1.0.0 ([`a569b19`](https://github.com/PrimisAI/nexus/commit/a569b19149fa572916d7e95cf6e90861b920224d))
+
 
 ## v0.8.1 (2025-07-25)
 
