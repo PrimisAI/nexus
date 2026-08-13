@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.0.1 (2026-08-13)
+
+### Bug Fixes
+
+- Update changelog config ([#36](https://github.com/PrimisAI/nexus/pull/36),
+  [`38b67b4`](https://github.com/PrimisAI/nexus/commit/38b67b40a0eb1fdaf531b070e58f082088991f58))
+
+### Documentation
+
+- Update demo video in README ([#35](https://github.com/PrimisAI/nexus/pull/35),
+  [`c098e3c`](https://github.com/PrimisAI/nexus/commit/c098e3cd906090fd50fe140cdbdf583f2ad60f58))
+
+
 ## v1.0.0 (2026-08-11)
 
 ### Chores
